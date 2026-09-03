@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>메뉴 알러지 확인</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,600;0,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F5F6F1;--panel:#FFFFFF;--ink:#1E2A26;--ink-soft:#55635C;--border:#DBDFD3;
+    --accent:#2F6F5E;--accent-soft:#E4EEE9;--warn:#B5501B;--warn-soft:#F7E9DE;--danger:#A32B2B;--danger-soft:#F8E3E1;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;}
+  .wrap{max-width:640px;margin:0 auto;padding:28px 18px 60px;}
+  h1{font-family:'Newsreader',serif;font-weight:700;font-size:26px;margin:4px 0 4px;}
+  .sub{color:var(--ink-soft);font-size:14px;margin-bottom:22px;}
+  input#search{
+    width:100%;padding:14px 16px;font-size:16px;border:1.5px solid var(--border);border-radius:10px;
+    font-family:inherit;background:#fff;
+  }
+  .item{
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:16px 18px;margin-top:12px;
+  }
+  .item .name{font-family:'Newsreader',serif;font-weight:600;font-size:18px;}
+  .tag{display:inline-flex;padding:5px 12px;border-radius:16px;font-size:13px;font-weight:600;background:var(--warn-soft);color:var(--warn);margin:6px 6px 0 0;}
+  .safe-note{color:var(--accent);font-size:13.5px;margin-top:8px;font-weight:500;}
+  .empty{color:var(--ink-soft);text-align:center;padding:40px 10px;font-size:14px;}
+  .error-box{background:var(--danger-soft);color:var(--danger);padding:16px;border-radius:10px;font-size:14px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="sub" id="companyLabel" style="font-weight:600;color:var(--accent);"></div>
+  <h1>메뉴 알러지 확인</h1>
+  <div class="sub">메뉴 이름을 검색하면 등록된 알러지원을 확인할 수 있습니다.</div>
+  <input id="search" placeholder="메뉴 이름 검색...">
+  <div id="results"></div>
+</div>
+<script>
+const slug = location.pathname.split('/').pop();
+const code = new URLSearchParams(location.search).get('code') || '';
+let allItems = [];
+
+async function load(){
+  try{
+    const res = await fetch(`/api/staff/${slug}/menu?code=${encodeURIComponent(code)}`);
+    const data = await res.json();
+    if(!res.ok){
+      document.getElementById('results').innerHTML = `<div class="error-box">${data.error || '접근할 수 없습니다.'}</div>`;
+      return;
+    }
+    document.getElementById('companyLabel').textContent = data.companyName;
+    allItems = data.menuItems;
+    render(allItems);
+  }catch(e){
+    document.getElementById('results').innerHTML = `<div class="error-box">불러오는 중 오류가 발생했습니다.</div>`;
+  }
+}
+
+function render(items){
+  const el = document.getElementById('results');
+  if(!items.length){ el.innerHTML = '<div class="empty">일치하는 메뉴가 없습니다.</div>'; return; }
+  el.innerHTML = items.map(m => `
+    <div class="item">
+      <div class="name">${escapeHtml(m.name)}</div>
+      ${m.allergens.length
+        ? m.allergens.map(a => `<span class="tag">${escapeHtml(a.name)}</span>`).join('')
+        : '<div class="safe-note">등록된 알러지원 없음</div>'}
+    </div>
+  `).join('');
+}
+
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  render(q ? allItems.filter(m => m.name.toLowerCase().includes(q)) : allItems);
+});
+
+function escapeHtml(str){ const d=document.createElement('div'); d.textContent = str==null?'':str; return d.innerHTML; }
+load();
+</script>
+</body>
+</html>

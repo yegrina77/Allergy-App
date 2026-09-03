@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>알러지 매니저</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F5F6F1;--panel:#FFFFFF;--ink:#1E2A26;--ink-soft:#55635C;--border:#DBDFD3;
+    --accent:#2F6F5E;--accent-soft:#E4EEE9;--warn:#B5501B;--warn-soft:#F7E9DE;
+    --safe:#3D7A4D;--safe-soft:#E7F1E8;--danger:#A32B2B;--danger-soft:#F8E3E1;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.5;}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 80px;}
+  h1,h2{font-family:'Newsreader',serif;font-weight:600;margin:0;}
+  a{color:var(--accent);}
+  input,select{
+    width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:6px;
+    font-family:inherit;font-size:14px;background:#fff;
+  }
+  label{font-size:12.5px;color:var(--ink-soft);display:block;margin:10px 0 4px;}
+  button{font-family:inherit;cursor:pointer;}
+  button.primary{
+    background:var(--accent);color:#fff;border:none;padding:10px 16px;border-radius:7px;
+    font-size:14px;font-weight:600;
+  }
+  button.primary:disabled{opacity:.45;cursor:not-allowed;}
+  button.ghost{background:none;border:1px solid var(--border);padding:8px 13px;border-radius:7px;font-size:13px;color:var(--ink);}
+  button.ghost:hover{border-color:var(--accent);color:var(--accent);}
+  button.danger{background:none;border:1px solid var(--danger);color:var(--danger);padding:6px 11px;border-radius:6px;font-size:12.5px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:22px;margin-bottom:18px;}
+  .center-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .auth-card{max-width:380px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px;}
+  .auth-card .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent);}
+  .error-box{background:var(--danger-soft);color:var(--danger);padding:9px 12px;border-radius:6px;font-size:13px;margin-top:10px;display:none;}
+  .tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
+  .tab{padding:8px 14px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:13.5px;color:var(--ink-soft);}
+  .tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  header.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:10px;}
+  .who{font-size:13px;color:var(--ink-soft);}
+  .who b{color:var(--ink);}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;color:var(--ink-soft);padding:6px 8px;border-bottom:1px solid var(--border);}
+  td{padding:9px 8px;border-bottom:1px solid #EEF0E9;vertical-align:top;}
+  .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:16px;font-size:12px;font-weight:500;background:var(--warn-soft);color:var(--warn);margin:2px 3px 2px 0;}
+  .tag.low{background:#FBF3E2;color:#8A6417;}
+  .dropzone{border:1.5px dashed var(--border);border-radius:8px;padding:22px 14px;text-align:center;cursor:pointer;color:var(--ink-soft);font-size:13.5px;}
+  .dropzone.drag,.dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
+  input[type=file]{display:none;}
+  .preview{margin-top:10px;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:none;}
+  .preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#F0F1EB;}
+  .spinner{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:-2px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .row-flex{display:flex;gap:16px;flex-wrap:wrap;}
+  .col{flex:1;min-width:280px;}
+  .chip{display:inline-block;padding:5px 11px;border-radius:6px;border:1px solid var(--border);background:#fff;font-size:12.5px;cursor:pointer;margin:3px 4px 3px 0;color:var(--ink-soft);}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .empty{color:var(--ink-soft);font-size:13.5px;padding:20px 0;text-align:center;}
+  .staff-link-box{background:var(--accent-soft);border-radius:8px;padding:14px 16px;font-size:13px;margin-top:14px;}
+  .staff-link-box code{font-family:'IBM Plex Mono',monospace;background:#fff;padding:2px 6px;border-radius:4px;}
+</style>
+</head>
+<body>
+
+<div id="authScreen" class="center-screen" style="display:none;">
+  <div class="auth-card">
+    <div class="eyebrow">알러지 매니저</div>
+    <h1 style="font-size:24px;margin:6px 0 18px;">로그인 / 회원가입</h1>
+    <div class="tabs">
+      <button class="tab active" id="tabLogin">로그인</button>
+      <button class="tab" id="tabSignup">신규 회사 등록</button>
+    </div>
+
+    <div id="loginForm">
+      <label>회사 URL 코드 (Company slug)</label>
+      <input id="loginSlug" placeholder="예: greenleaf-cafe">
+      <label>이메일</label>
+      <input id="loginEmail" type="email">
+      <label>비밀번호</label>
+      <input id="loginPassword" type="password">
+      <button class="primary" style="width:100%;margin-top:16px;" id="loginBtn">로그인</button>
+    </div>
+
+    <div id="signupForm" style="display:none;">
+      <label>회사(레스토랑) 이름</label>
+      <input id="suCompany" placeholder="예: Green Leaf Cafe">
+      <label>담당자 이름</label>
+      <input id="suName">
+      <label>이메일</label>
+      <input id="suEmail" type="email">
+      <label>비밀번호 (8자 이상)</label>
+      <input id="suPassword" type="password">
+      <button class="primary" style="width:100%;margin-top:16px;" id="signupBtn">등록하고 시작하기 (오너 계정)</button>
+    </div>
+
+    <div class="error-box" id="authError"></div>
+  </div>
+</div>
+
+<div id="appScreen" class="wrap" style="display:none;">
+  <header class="top">
+    <div>
+      <div class="eyebrow" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent);" id="companyNameLabel"></div>
+      <h1 style="font-size:24px;">알러지 매니저</h1>
+    </div>
+    <div class="who">
+      <b id="whoName"></b> · <span id="whoRole"></span>
+      &nbsp;·&nbsp;<button class="ghost" id="logoutBtn" style="padding:5px 10px;font-size:12px;">로그아웃</button>
+    </div>
+  </header>
+
+  <div class="tabs" id="mainTabs">
+    <button class="tab active" data-view="ingredients">재료</button>
+    <button class="tab" data-view="menu">메뉴</button>
+    <button class="tab" data-view="staffLink">직원용 화면</button>
+    <button class="tab" data-view="admins" id="tabAdmins" style="display:none;">관리자 계정</button>
+    <button class="tab" data-view="audit" id="tabAudit" style="display:none;">수정 이력</button>
+  </div>
+
+  <div id="view-ingredients"></div>
+  <div id="view-menu" style="display:none;"></div>
+  <div id="view-staffLink" style="display:none;"></div>
+  <div id="view-admins" style="display:none;"></div>
+  <div id="view-audit" style="display:none;"></div>
+</div>
+
+<script>
+const ALLERGENS = ["Wheat","Rye","Barley","Oats","Spelt","Triticale","Crustacea","Molluscs","Fish","Egg","Milk",
+  "Peanuts","Sesame","Soybeans","Lupin","Almond","Brazil Nut","Cashew","Hazelnut","Macadamia","Pecan","Pine Nut","Pistachio","Walnut","Sulphites","Royal Jelly"];
+
+let ME = null;
+let ingredientsCache = [];
+let menuCache = [];
+
+async function api(path, opts={}){
+  const res = await fetch(path, {
+    headers: {"Content-Type":"application/json"},
+    credentials: "same-origin",
+    ...opts,
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || "요청 실패");
+  return data;
+}
+
+// ---------- Auth ----------
+document.getElementById('tabLogin').onclick = () => switchAuthTab('login');
+document.getElementById('tabSignup').onclick = () => switchAuthTab('signup');
+function switchAuthTab(which){
+  document.getElementById('tabLogin').classList.toggle('active', which==='login');
+  document.getElementById('tabSignup').classList.toggle('active', which==='signup');
+  document.getElementById('loginForm').style.display = which==='login' ? 'block':'none';
+  document.getElementById('signupForm').style.display = which==='signup' ? 'block':'none';
+  hideAuthError();
+}
+function showAuthError(msg){ const e=document.getElementById('authError'); e.textContent=msg; e.style.display='block'; }
+function hideAuthError(){ document.getElementById('authError').style.display='none'; }
+
+document.getElementById('loginBtn').onclick = async () => {
+  hideAuthError();
+  try{
+    await api('/api/login', {method:'POST', body: JSON.stringify({
+      companySlug: document.getElementById('loginSlug').value.trim(),
+      email: document.getElementById('loginEmail').value.trim(),
+      password: document.getElementById('loginPassword').value,
+    })});
+    boot();
+  }catch(e){ showAuthError(e.message); }
+};
+
+document.getElementById('signupBtn').onclick = async () => {
+  hideAuthError();
+  try{
+    const r = await api('/api/signup', {method:'POST', body: JSON.stringify({
+      companyName: document.getElementById('suCompany').value.trim(),
+      name: document.getElementById('suName').value.trim(),
+      email: document.getElementById('suEmail').value.trim(),
+      password: document.getElementById('suPassword').value,
+    })});
+    boot();
+  }catch(e){ showAuthError(e.message); }
+};
+
+document.getElementById('logoutBtn').onclick = async () => {
+  await api('/api/logout', {method:'POST'});
+  location.reload();
+};
+
+async function boot(){
+  const data = await api('/api/me');
+  if(!data.user){
+    document.getElementById('authScreen').style.display='flex';
+    document.getElementById('appScreen').style.display='none';
+    return;
+  }
+  ME = data;
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('appScreen').style.display='block';
+  document.getElementById('companyNameLabel').textContent = data.company.name;
+  document.getElementById('whoName').textContent = data.user.name;
+  document.getElementById('whoRole').textContent = data.user.role === 'owner' ? '오너' : '관리자';
+  if(data.user.role === 'owner'){
+    document.getElementById('tabAdmins').style.display='inline-block';
+    document.getElementById('tabAudit').style.display='inline-block';
+  }
+  await loadIngredients();
+  await loadMenu();
+  renderIngredientsView();
+  renderMenuView();
+  renderStaffLinkView();
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll('#mainTabs .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    ['ingredients','menu','staffLink','admins','audit'].forEach(v => {
+      document.getElementById('view-'+v).style.display = (v===tab.dataset.view) ? 'block' : 'none';
+    });
+    if(tab.dataset.view === 'admins') loadAdmins();
+    if(tab.dataset.view === 'audit') loadAudit();
+  });
+});
+
+// ---------- Ingredients ----------
+async function loadIngredients(){
+  const d = await api('/api/ingredients');
+  ingredientsCache = d.ingredients;
+}
+
+function allergenTagsHtml(allergens){
+  if(!allergens || !allergens.length) return '<span style="color:var(--ink-soft);font-size:13px;">없음</span>';
+  return allergens.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${a.name}</span>`).join('');
+}
+
+function renderIngredientsView(){
+  const el = document.getElementById('view-ingredients');
+  el.innerHTML = `
+    <div class="row-flex">
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:12px;">재료 사진 등록</h2>
+        <div class="dropzone" id="dz">사진을 끌어놓거나 클릭해서 선택</div>
+        <input type="file" id="fileInput" accept="image/*" capture="environment">
+        <div class="preview" id="preview"><img id="previewImg"></div>
+        <button class="primary" style="width:100%;margin-top:10px;" id="analyzeBtn" disabled>AI로 분석하기</button>
+        <div id="analyzeStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
+        <div id="analyzeResult"></div>
+      </div>
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:12px;">등록된 재료 (${ingredientsCache.length})</h2>
+        <div id="ingredientList">${ingredientsCache.length ? '' : '<div class="empty">아직 등록된 재료가 없습니다.</div>'}</div>
+      </div>
+    </div>
+  `;
+  const listEl = document.getElementById('ingredientList');
+  if(ingredientsCache.length){
+    listEl.innerHTML = `<table><thead><tr><th>이름</th><th>알러지원</th><th>수정</th><th></th></tr></thead><tbody>
+      ${ingredientsCache.map(ing => `
+        <tr>
+          <td><b>${escapeHtml(ing.name)}</b></td>
+          <td>${allergenTagsHtml(ing.allergens)}</td>
+          <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(ing.updated_by_name||'')}<br>${formatDate(ing.updated_at)}</td>
+          <td><button class="danger" data-del-ing="${ing.id}">삭제</button></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+    listEl.querySelectorAll('[data-del-ing]').forEach(btn=>{
+      btn.onclick = async () => {
+        if(!confirm('이 재료를 삭제할까요?')) return;
+        await api('/api/ingredients/'+btn.dataset.delIng, {method:'DELETE'});
+        await loadIngredients(); renderIngredientsView();
+      };
+    });
+  }
+
+  // upload handlers
+  let currentImageBase64 = null, currentAnalysis = null;
+  const dz = document.getElementById('dz'), fileInput = document.getElementById('fileInput');
+  const preview = document.getElementById('preview'), previewImg = document.getElementById('previewImg');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+
+  dz.onclick = () => fileInput.click();
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); };
+  dz.ondragleave = () => dz.classList.remove('drag');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+  fileInput.onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+
+  function handleFile(file){
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1200;
+        let {width,height} = img;
+        if(width>maxDim || height>maxDim){ const s=maxDim/Math.max(width,height); width=Math.round(width*s); height=Math.round(height*s); }
+        const canvas = document.createElement('canvas');
+        canvas.width=width; canvas.height=height;
+        canvas.getContext('2d').drawImage(img,0,0,width,height);
+        currentImageBase64 = canvas.toDataURL('image/jpeg',0.88).split(',')[1];
+        previewImg.src = canvas.toDataURL('image/jpeg',0.88);
+        preview.style.display='block';
+        analyzeBtn.disabled = false;
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  analyzeBtn.onclick = async () => {
+    analyzeBtn.disabled = true;
+    document.getElementById('analyzeStatus').innerHTML = '<span class="spinner"></span> 분석 중...';
+    document.getElementById('analyzeResult').innerHTML = '';
+    try{
+      currentAnalysis = await api('/api/ingredients/analyze', {method:'POST', body: JSON.stringify({imageBase64: currentImageBase64})});
+      document.getElementById('analyzeStatus').textContent = '';
+      document.getElementById('analyzeResult').innerHTML = `
+        <label>재료 이름</label>
+        <input id="newIngName" placeholder="예: OO브랜드 간장">
+        <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">감지된 알러지원</div>
+        <div>${allergenTagsHtml(currentAnalysis.allergens)}</div>
+        ${currentAnalysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(currentAnalysis.notes)}</div>` : ''}
+        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">이 결과로 저장</button>
+      `;
+      document.getElementById('saveIngBtn').onclick = async () => {
+        const name = document.getElementById('newIngName').value.trim();
+        if(!name){ alert('재료 이름을 입력해주세요.'); return; }
+        await api('/api/ingredients', {method:'POST', body: JSON.stringify({
+          name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
+          overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
+        })});
+        await loadIngredients();
+        renderIngredientsView();
+      };
+    }catch(e){
+      document.getElementById('analyzeStatus').textContent = '';
+      document.getElementById('analyzeResult').innerHTML = `<div class="error-box" style="display:block;">${escapeHtml(e.message)}</div>`;
+    }finally{
+      analyzeBtn.disabled = false;
+    }
+  };
+}
+
+// ---------- Menu ----------
+async function loadMenu(){
+  const d = await api('/api/menu-items');
+  menuCache = d.menuItems;
+}
+
+function renderMenuView(){
+  const el = document.getElementById('view-menu');
+  el.innerHTML = `
+    <div class="row-flex">
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:12px;">새 메뉴 만들기</h2>
+        <label>메뉴 이름</label>
+        <input id="newMenuName" placeholder="예: 클럽 샌드위치">
+        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">사용 재료 선택</div>
+        <div id="menuIngChips">${ingredientsCache.map(ing=>`<span class="chip" data-ing="${ing.id}">${escapeHtml(ing.name)}</span>`).join('') || '<span class="empty">먼저 재료를 등록해주세요.</span>'}</div>
+        <button class="primary" style="width:100%;margin-top:14px;" id="saveMenuBtn">메뉴 저장</button>
+      </div>
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:12px;">등록된 메뉴 (${menuCache.length})</h2>
+        <div id="menuList">${menuCache.length ? '' : '<div class="empty">아직 등록된 메뉴가 없습니다.</div>'}</div>
+      </div>
+    </div>
+  `;
+  let selectedIngIds = new Set();
+  el.querySelectorAll('#menuIngChips .chip').forEach(chip => {
+    chip.onclick = () => {
+      const id = parseInt(chip.dataset.ing);
+      if(selectedIngIds.has(id)){ selectedIngIds.delete(id); chip.classList.remove('on'); }
+      else { selectedIngIds.add(id); chip.classList.add('on'); }
+    };
+  });
+  document.getElementById('saveMenuBtn').onclick = async () => {
+    const name = document.getElementById('newMenuName').value.trim();
+    if(!name){ alert('메뉴 이름을 입력해주세요.'); return; }
+    await api('/api/menu-items', {method:'POST', body: JSON.stringify({name, ingredientIds:[...selectedIngIds]})});
+    await loadMenu();
+    renderMenuView();
+  };
+
+  const listEl = document.getElementById('menuList');
+  if(menuCache.length){
+    listEl.innerHTML = `<table><thead><tr><th>메뉴</th><th>알러지원</th><th>수정</th><th></th></tr></thead><tbody>
+      ${menuCache.map(m => `
+        <tr>
+          <td><b>${escapeHtml(m.name)}</b></td>
+          <td>${allergenTagsHtml(m.allergens)}</td>
+          <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(m.updated_by_name||'')}<br>${formatDate(m.updated_at)}</td>
+          <td><button class="danger" data-del-menu="${m.id}">삭제</button></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+    listEl.querySelectorAll('[data-del-menu]').forEach(btn=>{
+      btn.onclick = async () => {
+        if(!confirm('이 메뉴를 삭제할까요?')) return;
+        await api('/api/menu-items/'+btn.dataset.delMenu, {method:'DELETE'});
+        await loadMenu(); renderMenuView();
+      };
+    });
+  }
+}
+
+// ---------- Staff link ----------
+function renderStaffLinkView(){
+  const el = document.getElementById('view-staffLink');
+  const url = `${location.origin}/staff/${ME.company.slug}?code=${ME.company.staffCode}`;
+  el.innerHTML = `
+    <div class="panel">
+      <h2 style="font-size:17px;">직원/매장용 조회 화면</h2>
+      <p style="font-size:13.5px;color:var(--ink-soft);">아래 링크를 매장 태블릿이나 POS에 즐겨찾기 해두세요. 로그인 없이 메뉴별 알러지를 검색할 수 있는 읽기 전용 화면입니다.</p>
+      <div class="staff-link-box">
+        <code>${url}</code><br><br>
+        <button class="ghost" id="copyLinkBtn">링크 복사</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('copyLinkBtn').onclick = () => {
+    navigator.clipboard.writeText(url);
+    document.getElementById('copyLinkBtn').textContent = '복사됨!';
+    setTimeout(()=>{ document.getElementById('copyLinkBtn').textContent='링크 복사'; }, 1500);
+  };
+}
+
+// ---------- Admins (owner only) ----------
+async function loadAdmins(){
+  const d = await api('/api/admins');
+  const el = document.getElementById('view-admins');
+  el.innerHTML = `
+    <div class="row-flex">
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:12px;">관리자 계정 추가</h2>
+        <label>이름</label><input id="newAdminName">
+        <label>이메일</label><input id="newAdminEmail" type="email">
+        <label>비밀번호 (8자 이상)</label><input id="newAdminPw" type="password">
+        <button class="primary" style="width:100%;margin-top:14px;" id="addAdminBtn">관리자 계정 생성</button>
+        <div class="error-box" id="adminError"></div>
+      </div>
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:12px;">계정 목록</h2>
+        <table><thead><tr><th>이름</th><th>이메일</th><th>역할</th><th></th></tr></thead><tbody>
+          ${d.users.map(u => `<tr>
+            <td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td>${u.role==='owner'?'오너':'관리자'}</td>
+            <td>${u.role!=='owner' ? `<button class="danger" data-del-user="${u.id}">삭제</button>` : ''}</td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>
+    </div>
+  `;
+  document.getElementById('addAdminBtn').onclick = async () => {
+    const errEl = document.getElementById('adminError');
+    errEl.style.display='none';
+    try{
+      await api('/api/admins', {method:'POST', body: JSON.stringify({
+        name: document.getElementById('newAdminName').value.trim(),
+        email: document.getElementById('newAdminEmail').value.trim(),
+        password: document.getElementById('newAdminPw').value,
+      })});
+      loadAdmins();
+    }catch(e){ errEl.textContent = e.message; errEl.style.display='block'; }
+  };
+  el.querySelectorAll('[data-del-user]').forEach(btn=>{
+    btn.onclick = async () => {
+      if(!confirm('이 계정을 삭제할까요?')) return;
+      await api('/api/admins/'+btn.dataset.delUser, {method:'DELETE'});
+      loadAdmins();
+    };
+  });
+}
+
+// ---------- Audit log (owner only) ----------
+async function loadAudit(){
+  const d = await api('/api/audit-log');
+  const el = document.getElementById('view-audit');
+  const actionKo = {created:'생성', updated:'수정', deleted:'삭제'};
+  const typeKo = {ingredient:'재료', menu_item:'메뉴', admin_account:'관리자 계정'};
+  el.innerHTML = `
+    <div class="panel">
+      <h2 style="font-size:17px;margin-bottom:12px;">수정 이력</h2>
+      ${d.log.length ? `<table><thead><tr><th>시간</th><th>누가</th><th>작업</th><th>대상</th></tr></thead><tbody>
+        ${d.log.map(l => `<tr>
+          <td style="font-size:12.5px;color:var(--ink-soft);">${formatDate(l.created_at)}</td>
+          <td><b>${escapeHtml(l.user_name)}</b></td>
+          <td>${actionKo[l.action]||l.action} · ${typeKo[l.target_type]||l.target_type}</td>
+          <td>${escapeHtml(l.target_name)}</td>
+        </tr>`).join('')}
+      </tbody></table>` : '<div class="empty">아직 기록이 없습니다.</div>'}
+    </div>
+  `;
+}
+
+function escapeHtml(str){ const d=document.createElement('div'); d.textContent = str==null?'':str; return d.innerHTML; }
+function formatDate(iso){ if(!iso) return ''; const d = new Date(iso); return d.toLocaleString('ko-KR', {dateStyle:'medium', timeStyle:'short'}); }
+
+boot();
+</script>
+</body>
+</html>
