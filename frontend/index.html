@@ -134,6 +134,7 @@ const ALLERGENS = ["Wheat","Rye","Barley","Oats","Spelt","Triticale","Crustacea"
 let ME = null;
 let ingredientsCache = [];
 let menuCache = [];
+let suppliersCache = [];
 
 async function api(path, opts={}){
   const res = await fetch(path, {
@@ -206,6 +207,7 @@ async function boot(){
     document.getElementById('tabAdmins').style.display='inline-block';
     document.getElementById('tabAudit').style.display='inline-block';
   }
+  await loadSuppliers();
   await loadIngredients();
   await loadMenu();
   renderIngredientsView();
@@ -225,6 +227,12 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
     if(tab.dataset.view === 'audit') loadAudit();
   });
 });
+
+// ---------- Suppliers ----------
+async function loadSuppliers(){
+  const d = await api('/api/suppliers');
+  suppliersCache = d.suppliers;
+}
 
 // ---------- Ingredients ----------
 async function loadIngredients(){
@@ -258,10 +266,11 @@ function renderIngredientsView(){
   `;
   const listEl = document.getElementById('ingredientList');
   if(ingredientsCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>이름</th><th>알러지원</th><th>수정</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>이름</th><th>공급업체 / 코드</th><th>알러지원</th><th>수정</th><th></th></tr></thead><tbody>
       ${ingredientsCache.map(ing => `
         <tr>
           <td><b>${escapeHtml(ing.name)}</b></td>
+          <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
           <td>${allergenTagsHtml(ing.allergens)}</td>
           <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(ing.updated_by_name||'')}<br>${formatDate(ing.updated_at)}</td>
           <td><button class="danger" data-del-ing="${ing.id}">삭제</button></td>
@@ -318,19 +327,83 @@ function renderIngredientsView(){
       document.getElementById('analyzeStatus').textContent = '';
       document.getElementById('analyzeResult').innerHTML = `
         <label>재료 이름</label>
-        <input id="newIngName" placeholder="예: OO브랜드 간장">
+        <input id="newIngName" placeholder="예: 간장, 커리 (일반 이름으로)">
         <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">감지된 알러지원</div>
         <div>${allergenTagsHtml(currentAnalysis.allergens)}</div>
         ${currentAnalysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(currentAnalysis.notes)}</div>` : ''}
+
+        <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
+          <input type="checkbox" id="isSupplierProduct" style="width:auto;"> 특정 공급업체의 제품(시제품)인가요?
+        </label>
+        <div id="supplierFields" style="display:none;margin-top:8px;">
+          <label>제품코드 (인보이스의 Code)</label>
+          <input id="newIngCode" placeholder="예: CR-4521">
+          <div id="codeLookupMsg" style="font-size:12.5px;margin-top:4px;"></div>
+          <label>공급업체</label>
+          <select id="newIngSupplier">
+            <option value="">선택...</option>
+            ${suppliersCache.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
+            <option value="__new__">+ 새 공급업체 추가</option>
+          </select>
+          <input id="newSupplierName" placeholder="새 공급업체 이름" style="display:none;margin-top:6px;">
+          <label>가격 (선택)</label>
+          <input id="newIngPrice" type="number" step="0.01" placeholder="예: 12.50">
+        </div>
+
         <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">이 결과로 저장</button>
       `;
+
+      const toggle = document.getElementById('isSupplierProduct');
+      const fields = document.getElementById('supplierFields');
+      toggle.onchange = () => { fields.style.display = toggle.checked ? 'block' : 'none'; };
+
+      const codeInput = document.getElementById('newIngCode');
+      codeInput.addEventListener('blur', async () => {
+        const code = codeInput.value.trim();
+        const msgEl = document.getElementById('codeLookupMsg');
+        if(!code){ msgEl.textContent=''; return; }
+        const res = await api('/api/ingredients/lookup?code=' + encodeURIComponent(code));
+        if(res.ingredient){
+          msgEl.style.color = 'var(--warn)';
+          msgEl.textContent = `이미 등록된 제품코드입니다 (${res.ingredient.name} · ${res.ingredient.supplier_name||''}). 새로 만들면 별개 재료로 등록됩니다.`;
+        } else {
+          msgEl.style.color = 'var(--safe)';
+          msgEl.textContent = '아직 등록되지 않은 제품코드입니다.';
+        }
+      });
+
+      document.getElementById('newIngSupplier').onchange = (e) => {
+        document.getElementById('newSupplierName').style.display = e.target.value === '__new__' ? 'block' : 'none';
+      };
+
       document.getElementById('saveIngBtn').onclick = async () => {
         const name = document.getElementById('newIngName').value.trim();
         if(!name){ alert('재료 이름을 입력해주세요.'); return; }
-        await api('/api/ingredients', {method:'POST', body: JSON.stringify({
-          name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
-          overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
-        })});
+
+        let supplierId = null, productCode = null, price = null;
+        if(toggle.checked){
+          productCode = document.getElementById('newIngCode').value.trim() || null;
+          const priceVal = document.getElementById('newIngPrice').value;
+          price = priceVal ? parseFloat(priceVal) : null;
+          const supplierSelect = document.getElementById('newIngSupplier').value;
+          if(supplierSelect === '__new__'){
+            const newName = document.getElementById('newSupplierName').value.trim();
+            if(!newName){ alert('새 공급업체 이름을 입력해주세요.'); return; }
+            const r = await api('/api/suppliers', {method:'POST', body: JSON.stringify({name:newName})});
+            supplierId = r.supplier.id;
+            await loadSuppliers();
+          } else if(supplierSelect){
+            supplierId = parseInt(supplierSelect);
+          }
+        }
+
+        try{
+          await api('/api/ingredients', {method:'POST', body: JSON.stringify({
+            name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
+            overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
+            supplierId, productCode, price,
+          })});
+        }catch(e){ alert(e.message); return; }
         await loadIngredients();
         renderIngredientsView();
       };
