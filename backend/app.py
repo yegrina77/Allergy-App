@@ -384,7 +384,9 @@ def analyze_ingredient(user):
             },
             timeout=60,
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            # Anthropic이 실제로 뭐라고 거부했는지 그대로 보여줌 (디버깅용)
+            return jsonify({"error": f"AI 분석 중 오류 ({resp.status_code}): {resp.text[:500]}"}), 502
         content = resp.json()["content"]
         text_block = next(b["text"] for b in content if b["type"] == "text")
         clean = text_block.replace("```json", "").replace("```", "").strip()
