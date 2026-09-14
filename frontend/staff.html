@@ -28,9 +28,18 @@
   .filter-btn.on{background:var(--accent);border-color:var(--accent);color:#fff;}
   .item{
     background:var(--panel);border:1px solid var(--border);border-radius:10px;
-    padding:16px 18px;margin-top:12px;
+    padding:0;margin-top:12px;overflow:hidden;
   }
-  .item .name{font-family:'Newsreader',serif;font-weight:600;font-size:18px;}
+  .item summary{
+    list-style:none;cursor:pointer;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  }
+  .item summary::-webkit-details-marker{display:none;}
+  .item summary::after{content:'+';font-size:20px;color:var(--ink-soft);flex-shrink:0;}
+  .item[open] summary::after{content:'–';}
+  .item .name{font-family:'Newsreader',serif;font-weight:600;font-size:17px;}
+  .dot-row{display:flex;gap:5px;flex-shrink:0;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .item-detail{padding:0 18px 16px;}
   .tag{display:inline-flex;padding:5px 12px;border-radius:16px;font-size:13px;font-weight:600;background:var(--warn-soft);color:var(--warn);margin:6px 6px 0 0;}
   .more-toggle{display:inline-block;margin:6px 6px 0 0;}
   .more-toggle summary{list-style:none;font-size:12.5px;color:var(--ink-soft);cursor:pointer;}
@@ -162,12 +171,32 @@ function render(items){
   const el = document.getElementById('results');
   if(!items.length){ el.innerHTML = '<div class="empty">No matching menu items.</div>'; return; }
   el.innerHTML = items.map(m => `
-    <div class="item">
-      <div class="name">${escapeHtml(m.name)}</div>
-      ${allergenTagsHtml(m.allergens)}
-      ${dietBadgesHtml(m.dietFlags, m.vegFlags)}
-    </div>
+    <details class="item">
+      <summary>
+        <span class="name">${escapeHtml(m.name)}</span>
+        ${dotRowHtml(m.dietFlags, m.vegFlags)}
+      </summary>
+      <div class="item-detail">
+        ${allergenTagsHtml(m.allergens)}
+        ${dietBadgesHtml(m.dietFlags, m.vegFlags)}
+      </div>
+    </details>
   `).join('');
+}
+
+function dotRowHtml(dietFlags, vegFlags){
+  const defs = [
+    {val: dietFlags && dietFlags.glutenFree, label:'Gluten Free'},
+    {val: dietFlags && dietFlags.dairyFree, label:'Dairy Free'},
+    {val: dietFlags && dietFlags.nutFree, label:'Nut Free'},
+    {val: dietFlags && dietFlags.shellfishFree, label:'Shellfish Free'},
+    {val: vegFlags && vegFlags.vegetarian, label:'Vegetarian'},
+    {val: vegFlags && vegFlags.vegan, label:'Vegan'},
+  ];
+  return `<span class="dot-row">${defs.map(d => {
+    const color = d.val === true ? 'var(--accent)' : (d.val === false ? 'var(--danger)' : '#D8DCD2');
+    return `<span class="dot" style="background:${color};" title="${d.label}${d.val===true?': yes':(d.val===false?': no':': not classified')}"></span>`;
+  }).join('')}</span>`;
 }
 
 document.getElementById('search').addEventListener('input', applyAndRender);
