@@ -90,6 +90,14 @@ def load_menu(menu_id):
     return _raw_get(f"allergy_menu:{menu_id}", None)
 
 
+def list_subrecipe_ids(company_id):
+    return _raw_get(f"allergy_subrecipe_ids:{company_id}", [])
+
+
+def load_subrecipe(sr_id):
+    return _raw_get(f"allergy_subrecipe:{sr_id}", None)
+
+
 def load_audit(company_id):
     return _raw_get(f"allergy_audit:{company_id}", [])
 
@@ -451,6 +459,7 @@ def create_ingredient(user):
         "supplier_name": None,
         "product_code": product_code,
         "price": data.get("price"),
+        "diet_category": data.get("dietCategory") or None,
         "photo_base64": data.get("photoBase64"),
         "created_by_id": user["id"], "created_by_name": user["name"],
         "updated_by_id": user["id"], "updated_by_name": user["name"],
@@ -495,6 +504,7 @@ def update_ingredient(user, ing_id):
         "supplier_id": data.get("supplierId", existing.get("supplier_id")),
         "product_code": product_code,
         "price": data.get("price", existing.get("price")),
+        "diet_category": data.get("dietCategory", existing.get("diet_category")) or None,
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "updated_at": now_iso(),
     })
@@ -525,19 +535,44 @@ def delete_ingredient(user, ing_id):
 
 
 # ------------------------------------------------------------------
-# Menu items CRUD (admin/owner) — allergens are computed from linked ingredients
+# Allergen / diet computation shared by sub-recipes and menu items
 # ------------------------------------------------------------------
 GLUTEN_SOURCES = {"Wheat", "Rye", "Barley", "Oats", "Spelt", "Triticale"}
 DAIRY_SOURCES = {"Milk"}
+NUT_SOURCES = {"Peanuts", "Almond", "Brazil Nut", "Cashew", "Hazelnut", "Macadamia", "Pecan", "Pine Nut", "Pistachio", "Walnut"}
+SHELLFISH_SOURCES = {"Crustacea", "Molluscs"}
+
+DIET_FLAG_DEFS = [
+    ("gluten", GLUTEN_SOURCES, "Gluten Free"),
+    ("dairy", DAIRY_SOURCES, "Dairy Free"),
+    ("nut", NUT_SOURCES, "Nut Free"),
+    ("shellfish", SHELLFISH_SOURCES, "Shellfish Free"),
+]
 
 
-def compute_menu_allergens(ingredient_ids):
+def gather_ingredients(ingredient_ids, subrecipe_ids):
+    """Collect the full set of ingredient records behind a menu item or sub-recipe,
+    following sub-recipes one level down (sub-recipes are made of ingredients only)."""
+    seen = {}
+    for i in ingredient_ids or []:
+        ing = load_ingredient(i)
+        if ing:
+            seen[ing["id"]] = ing
+    for sid in subrecipe_ids or []:
+        sr = load_subrecipe(sid)
+        if not sr:
+            continue
+        for i in sr.get("ingredient_ids", []):
+            ing = load_ingredient(i)
+            if ing:
+                seen[ing["id"]] = ing
+    return list(seen.values())
+
+
+def compute_allergens(ingredient_records):
     merged = {}
     contributors = {}
-    for i in ingredient_ids:
-        ing = load_ingredient(i)
-        if not ing:
-            continue
+    for ing in ingredient_records:
         for a in ing.get("allergens", []):
             key = a["name"]
             if key not in merged or a.get("confidence") == "high":
@@ -554,20 +589,121 @@ def compute_menu_allergens(ingredient_ids):
 def compute_diet_flags(allergens_list):
     def norm(s):
         return (s or "").strip().lower()
-    gluten_norm = {norm(x) for x in GLUTEN_SOURCES}
-    dairy_norm = {norm(x) for x in DAIRY_SOURCES}
-    gluten_hits = [a for a in allergens_list if norm(a.get("name")) in gluten_norm]
-    dairy_hits = [a for a in allergens_list if norm(a.get("name")) in dairy_norm]
-    gluten_ingredients = sorted({ing for a in gluten_hits for ing in a.get("ingredients", [])})
-    dairy_ingredients = sorted({ing for a in dairy_hits for ing in a.get("ingredients", [])})
+    result = {}
+    for key, sources, _label in DIET_FLAG_DEFS:
+        norm_sources = {norm(x) for x in sources}
+        hits = [a for a in allergens_list if norm(a.get("name")) in norm_sources]
+        culprits = sorted({ing for a in hits for ing in a.get("ingredients", [])})
+        result[f"{key}Free"] = len(hits) == 0
+        result[f"{key}Culprits"] = culprits
+    return result
+
+
+def compute_veg_flags(ingredient_records):
+    has_meat = any(r.get("diet_category") == "meat_fish" for r in ingredient_records)
+    has_animal_other = any(r.get("diet_category") == "animal_non_meat" for r in ingredient_records)
+    has_unclassified = any(r.get("diet_category") not in ("plant", "animal_non_meat", "meat_fish") for r in ingredient_records)
+
+    veg_culprits = sorted({r["name"] for r in ingredient_records if r.get("diet_category") == "meat_fish"})
+    vegan_culprits = sorted({r["name"] for r in ingredient_records if r.get("diet_category") in ("meat_fish", "animal_non_meat")})
+
+    vegetarian = False if has_meat else (None if has_unclassified else True)
+    vegan = False if (has_meat or has_animal_other) else (None if has_unclassified else True)
+
     return {
-        "glutenFree": len(gluten_hits) == 0,
-        "glutenCulprits": gluten_ingredients,
-        "dairyFree": len(dairy_hits) == 0,
-        "dairyCulprits": dairy_ingredients,
+        "vegetarian": vegetarian, "vegetarianCulprits": veg_culprits,
+        "vegan": vegan, "veganCulprits": vegan_culprits,
     }
 
 
+def build_menu_response(m):
+    d = dict(m)
+    records = gather_ingredients(m.get("ingredient_ids", []), m.get("sub_recipe_ids", []))
+    allergens = compute_allergens(records)
+    d["allergens"] = allergens
+    d["dietFlags"] = compute_diet_flags(allergens)
+    d["vegFlags"] = compute_veg_flags(records)
+    return d
+
+
+# ------------------------------------------------------------------
+# Sub-recipes CRUD — intermediate prep (e.g. "Curry Sauce") made from
+# ingredients, reused across one or more menu items.
+# ------------------------------------------------------------------
+@app.route("/api/sub-recipes", methods=["GET"])
+@login_required()
+def list_sub_recipes(user):
+    ids = list_subrecipe_ids(user["company_id"])
+    items = [load_subrecipe(i) for i in ids]
+    items = [s for s in items if s]
+    items.sort(key=lambda s: s["name"])
+    out = []
+    for s in items:
+        d = dict(s)
+        records = gather_ingredients(s.get("ingredient_ids", []), [])
+        d["allergens"] = compute_allergens(records)
+        out.append(d)
+    return jsonify({"subRecipes": out})
+
+
+@app.route("/api/sub-recipes", methods=["POST"])
+@login_required()
+def create_sub_recipe(user):
+    data = request.get_json(force=True)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Please enter a sub-recipe name."}), 400
+    sr_id = new_id()
+    sr = {
+        "id": sr_id, "company_id": user["company_id"], "name": name,
+        "ingredient_ids": data.get("ingredientIds", []),
+        "created_by_id": user["id"], "created_by_name": user["name"],
+        "updated_by_id": user["id"], "updated_by_name": user["name"],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    _raw_set(f"allergy_subrecipe:{sr_id}", sr)
+    ids = list_subrecipe_ids(user["company_id"])
+    ids.append(sr_id)
+    _raw_set(f"allergy_subrecipe_ids:{user['company_id']}", ids)
+    log_action(user["company_id"], user, "created", "sub_recipe", name)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sub-recipes/<sr_id>", methods=["PUT"])
+@login_required()
+def update_sub_recipe(user, sr_id):
+    existing = load_subrecipe(sr_id)
+    if not existing or existing["company_id"] != user["company_id"]:
+        return jsonify({"error": "Not found."}), 404
+    data = request.get_json(force=True)
+    existing.update({
+        "name": (data.get("name") or existing["name"]).strip(),
+        "ingredient_ids": data.get("ingredientIds", existing.get("ingredient_ids", [])),
+        "updated_by_id": user["id"], "updated_by_name": user["name"],
+        "updated_at": now_iso(),
+    })
+    _raw_set(f"allergy_subrecipe:{sr_id}", existing)
+    log_action(user["company_id"], user, "updated", "sub_recipe", existing["name"])
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sub-recipes/<sr_id>", methods=["DELETE"])
+@login_required()
+def delete_sub_recipe(user, sr_id):
+    existing = load_subrecipe(sr_id)
+    if not existing or existing["company_id"] != user["company_id"]:
+        return jsonify({"error": "Not found."}), 404
+    _raw_delete(f"allergy_subrecipe:{sr_id}")
+    ids = [i for i in list_subrecipe_ids(user["company_id"]) if i != sr_id]
+    _raw_set(f"allergy_subrecipe_ids:{user['company_id']}", ids)
+    log_action(user["company_id"], user, "deleted", "sub_recipe", existing["name"])
+    return jsonify({"ok": True})
+
+
+# ------------------------------------------------------------------
+# Menu items CRUD (admin/owner) — allergens/diet flags are computed from
+# linked ingredients AND linked sub-recipes.
+# ------------------------------------------------------------------
 @app.route("/api/menu-items", methods=["GET"])
 @login_required()
 def list_menu_items(user):
@@ -575,14 +711,7 @@ def list_menu_items(user):
     items = [load_menu(i) for i in ids]
     items = [m for m in items if m]
     items.sort(key=lambda m: m["name"])
-    out = []
-    for m in items:
-        d = dict(m)
-        allergens = compute_menu_allergens(m.get("ingredient_ids", []))
-        d["allergens"] = allergens
-        d["dietFlags"] = compute_diet_flags(allergens)
-        out.append(d)
-    return jsonify({"menuItems": out})
+    return jsonify({"menuItems": [build_menu_response(m) for m in items]})
 
 
 @app.route("/api/menu-items", methods=["POST"])
@@ -590,14 +719,14 @@ def list_menu_items(user):
 def create_menu_item(user):
     data = request.get_json(force=True)
     name = (data.get("name") or "").strip()
-    ingredient_ids = data.get("ingredientIds", [])
     if not name:
         return jsonify({"error": "Please enter a menu name."}), 400
 
     menu_id = new_id()
     menu = {
         "id": menu_id, "company_id": user["company_id"], "name": name,
-        "ingredient_ids": ingredient_ids,
+        "ingredient_ids": data.get("ingredientIds", []),
+        "sub_recipe_ids": data.get("subRecipeIds", []),
         "created_by_id": user["id"], "created_by_name": user["name"],
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -621,6 +750,7 @@ def update_menu_item(user, item_id):
     existing.update({
         "name": (data.get("name") or existing["name"]).strip(),
         "ingredient_ids": data.get("ingredientIds", existing.get("ingredient_ids", [])),
+        "sub_recipe_ids": data.get("subRecipeIds", existing.get("sub_recipe_ids", [])),
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "updated_at": now_iso(),
     })
@@ -668,10 +798,11 @@ def staff_menu(slug):
     items = [load_menu(i) for i in ids]
     items = [m for m in items if m]
     items.sort(key=lambda m: m["name"])
-    out = [{"id": m["id"], "name": m["name"],
-             "allergens": compute_menu_allergens(m.get("ingredient_ids", [])),
-             "dietFlags": compute_diet_flags(compute_menu_allergens(m.get("ingredient_ids", [])))}
-           for m in items]
+    out = []
+    for m in items:
+        d = build_menu_response(m)
+        out.append({"id": d["id"], "name": d["name"], "allergens": d["allergens"],
+                     "dietFlags": d["dietFlags"], "vegFlags": d["vegFlags"]})
     return jsonify({"companyName": company["name"], "menuItems": out})
 
 
