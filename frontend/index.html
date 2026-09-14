@@ -245,6 +245,17 @@ function allergenTagsHtml(allergens){
   return allergens.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${a.name}</span>`).join('');
 }
 
+function dietBadgesHtml(dietFlags){
+  if(!dietFlags) return '';
+  const badge = (ok, label, culprits) => {
+    if(ok) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${label}</span>`;
+    const why = culprits && culprits.length ? ` (원인: ${culprits.map(escapeHtml).join(', ')})` : '';
+    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">${label} 아님${why}</span>`;
+  };
+  return badge(dietFlags.glutenFree, 'Gluten Free', dietFlags.glutenCulprits)
+       + badge(dietFlags.dairyFree, 'Dairy Free', dietFlags.dairyCulprits);
+}
+
 function renderIngredientsView(){
   const el = document.getElementById('view-ingredients');
   el.innerHTML = `
@@ -467,11 +478,12 @@ function renderMenuView(){
 
   const listEl = document.getElementById('menuList');
   if(menuCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>메뉴</th><th>알러지원</th><th>수정</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>메뉴</th><th>알러지원</th><th>Free 표시</th><th>수정</th><th></th></tr></thead><tbody>
       ${menuCache.map(m => `
         <tr>
           <td><b>${escapeHtml(m.name)}</b></td>
           <td>${allergenTagsHtml(m.allergens)}</td>
+          <td>${dietBadgesHtml(m.dietFlags)}</td>
           <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(m.updated_by_name||'')}<br>${formatDate(m.updated_at)}</td>
           <td><button class="danger" data-del-menu="${m.id}">삭제</button></td>
         </tr>`).join('')}

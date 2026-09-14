@@ -69,8 +69,19 @@ function render(items){
       ${m.allergens.length
         ? m.allergens.map(a => `<span class="tag">${escapeHtml(a.name)}</span>`).join('')
         : '<div class="safe-note">등록된 알러지원 없음</div>'}
+      ${dietBadgesHtml(m.dietFlags)}
     </div>
   `).join('');
+}
+
+function dietBadgesHtml(dietFlags){
+  if(!dietFlags) return '';
+  const badge = (ok, label, culprits) => {
+    if(ok) return `<span class="tag" style="background:var(--accent-soft);color:var(--accent);">${label}</span>`;
+    const why = culprits && culprits.length ? ` (원인: ${culprits.map(escapeHtml).join(', ')})` : '';
+    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">${label} 아님${why}</span>`;
+  };
+  return `<div style="margin-top:8px;">${badge(dietFlags.glutenFree, 'Gluten Free', dietFlags.glutenCulprits)}${badge(dietFlags.dairyFree, 'Dairy Free', dietFlags.dairyCulprits)}</div>`;
 }
 
 document.getElementById('search').addEventListener('input', e => {
