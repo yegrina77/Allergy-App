@@ -371,10 +371,13 @@ def analyze_invoice(user):
 
     system_prompt = """You are reading a photo of a restaurant supplier invoice.
 
-Extract every line item you can read: its product code (SKU/item code as printed), the product name as printed, and the price shown for that line (state whether it is a unit price or a line/extended total in "priceType"). If a field is unreadable or not shown, use null for that field. Never invent values that are not visible in the photo.
+First, read the supplier/issuing company's name as printed on the letterhead or header of the invoice (not the buyer's name) — put this in "supplierName" (null if you cannot find one).
+
+Then extract every line item you can read: its product code (SKU/item code as printed), the product name as printed, and the price shown for that line (state whether it is a unit price or a line/extended total in "priceType"). If a field is unreadable or not shown, use null for that field. Never invent values that are not visible in the photo.
 
 Respond ONLY in this JSON format, no markdown, no explanation:
 {
+  "supplierName": "issuing company name as printed, or null",
   "items": [
     {"productCode": "code as printed or null", "productName": "name as printed", "price": number or null, "priceType": "unit" | "line" | "unknown"}
   ]
@@ -412,6 +415,14 @@ Respond ONLY in this JSON format, no markdown, no explanation:
         return jsonify({"error": f"AI analysis error: {e}"}), 502
 
     # Match each extracted line against registered ingredients by product code
+    detected_supplier = (parsed.get("supplierName") or "").strip()
+
+    def names_roughly_match(a, b):
+        a, b = (a or "").strip().lower(), (b or "").strip().lower()
+        if not a or not b:
+            return True  # nothing to compare against, don't flag a mismatch
+        return a in b or b in a
+
     by_code = {}
     for i in list_ingredient_ids(user["company_id"]):
         ing = load_ingredient(i)
@@ -428,6 +439,11 @@ Respond ONLY in this JSON format, no markdown, no explanation:
             match and invoice_price is not None and current_price is not None
             and abs(float(current_price) - float(invoice_price)) > 0.001
         )
+        registered_supplier_name = match.get("supplier_name") if match else None
+        supplier_mismatch = bool(
+            match and registered_supplier_name and detected_supplier
+            and not names_roughly_match(registered_supplier_name, detected_supplier)
+        )
         results.append({
             "productCode": code,
             "invoiceName": item.get("productName"),
@@ -437,9 +453,11 @@ Respond ONLY in this JSON format, no markdown, no explanation:
             "matchedName": match["name"] if match else None,
             "currentPrice": current_price,
             "priceChanged": price_changed,
+            "registeredSupplierName": registered_supplier_name,
+            "supplierMismatch": supplier_mismatch,
         })
 
-    return jsonify({"items": results})
+    return jsonify({"detectedSupplierName": detected_supplier or None, "items": results})
 
 
 
