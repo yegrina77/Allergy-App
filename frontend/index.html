@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>알러지 매니저</title>
+<title>Allergy Manager</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -14,7 +14,7 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.5;}
-  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 80px;}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 80px;}
   h1,h2{font-family:'Newsreader',serif;font-weight:600;margin:0;}
   a{color:var(--accent);}
   input,select{
@@ -47,6 +47,9 @@
   td{padding:9px 8px;border-bottom:1px solid #EEF0E9;vertical-align:top;}
   .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:16px;font-size:12px;font-weight:500;background:var(--warn-soft);color:var(--warn);margin:2px 3px 2px 0;}
   .tag.low{background:#FBF3E2;color:#8A6417;}
+  .more-toggle{font-size:11.5px;color:var(--ink-soft);cursor:pointer;}
+  .more-toggle summary{list-style:none;}
+  .more-toggle summary::-webkit-details-marker{display:none;}
   .dropzone{border:1.5px dashed var(--border);border-radius:8px;padding:22px 14px;text-align:center;cursor:pointer;color:var(--ink-soft);font-size:13.5px;}
   .dropzone.drag,.dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
   input[type=file]{display:none;}
@@ -58,42 +61,45 @@
   .col{flex:1;min-width:280px;}
   .chip{display:inline-block;padding:5px 11px;border-radius:6px;border:1px solid var(--border);background:#fff;font-size:12.5px;cursor:pointer;margin:3px 4px 3px 0;color:var(--ink-soft);}
   .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .chip.filter{border-radius:20px;}
+  .chip.filter.on{background:var(--ink);border-color:var(--ink);}
   .empty{color:var(--ink-soft);font-size:13.5px;padding:20px 0;text-align:center;}
   .staff-link-box{background:var(--accent-soft);border-radius:8px;padding:14px 16px;font-size:13px;margin-top:14px;}
   .staff-link-box code{font-family:'IBM Plex Mono',monospace;background:#fff;padding:2px 6px;border-radius:4px;}
+  .ing-picker-box{border:1px solid var(--border);border-radius:8px;padding:12px;max-height:280px;overflow-y:auto;margin-top:8px;}
 </style>
 </head>
 <body>
 
 <div id="authScreen" class="center-screen" style="display:none;">
   <div class="auth-card">
-    <div class="eyebrow">알러지 매니저</div>
-    <h1 style="font-size:24px;margin:6px 0 18px;">로그인 / 회원가입</h1>
+    <div class="eyebrow">Allergy Manager</div>
+    <h1 style="font-size:24px;margin:6px 0 18px;">Log in / Sign up</h1>
     <div class="tabs">
-      <button class="tab active" id="tabLogin">로그인</button>
-      <button class="tab" id="tabSignup">신규 회사 등록</button>
+      <button class="tab active" id="tabLogin">Log in</button>
+      <button class="tab" id="tabSignup">New company</button>
     </div>
 
     <div id="loginForm">
-      <label>회사 URL 코드 (Company slug)</label>
-      <input id="loginSlug" placeholder="예: greenleaf-cafe">
-      <label>이메일</label>
+      <label>Company URL code (slug)</label>
+      <input id="loginSlug" placeholder="e.g. greenleaf-cafe">
+      <label>Email</label>
       <input id="loginEmail" type="email">
-      <label>비밀번호</label>
+      <label>Password</label>
       <input id="loginPassword" type="password">
-      <button class="primary" style="width:100%;margin-top:16px;" id="loginBtn">로그인</button>
+      <button class="primary" style="width:100%;margin-top:16px;" id="loginBtn">Log in</button>
     </div>
 
     <div id="signupForm" style="display:none;">
-      <label>회사(레스토랑) 이름</label>
-      <input id="suCompany" placeholder="예: Green Leaf Cafe">
-      <label>담당자 이름</label>
+      <label>Company (restaurant) name</label>
+      <input id="suCompany" placeholder="e.g. Green Leaf Cafe">
+      <label>Your name</label>
       <input id="suName">
-      <label>이메일</label>
+      <label>Email</label>
       <input id="suEmail" type="email">
-      <label>비밀번호 (8자 이상)</label>
+      <label>Password (min 8 characters)</label>
       <input id="suPassword" type="password">
-      <button class="primary" style="width:100%;margin-top:16px;" id="signupBtn">등록하고 시작하기 (오너 계정)</button>
+      <button class="primary" style="width:100%;margin-top:16px;" id="signupBtn">Create account (Owner)</button>
     </div>
 
     <div class="error-box" id="authError"></div>
@@ -104,20 +110,20 @@
   <header class="top">
     <div>
       <div class="eyebrow" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent);" id="companyNameLabel"></div>
-      <h1 style="font-size:24px;">알러지 매니저</h1>
+      <h1 style="font-size:24px;">Allergy Manager</h1>
     </div>
     <div class="who">
       <b id="whoName"></b> · <span id="whoRole"></span>
-      &nbsp;·&nbsp;<button class="ghost" id="logoutBtn" style="padding:5px 10px;font-size:12px;">로그아웃</button>
+      &nbsp;·&nbsp;<button class="ghost" id="logoutBtn" style="padding:5px 10px;font-size:12px;">Log out</button>
     </div>
   </header>
 
   <div class="tabs" id="mainTabs">
-    <button class="tab active" data-view="ingredients">재료</button>
-    <button class="tab" data-view="menu">메뉴</button>
-    <button class="tab" data-view="staffLink">직원용 화면</button>
-    <button class="tab" data-view="admins" id="tabAdmins" style="display:none;">관리자 계정</button>
-    <button class="tab" data-view="audit" id="tabAudit" style="display:none;">수정 이력</button>
+    <button class="tab active" data-view="ingredients">Ingredients</button>
+    <button class="tab" data-view="menu">Menu</button>
+    <button class="tab" data-view="staffLink">Staff View</button>
+    <button class="tab" data-view="admins" id="tabAdmins" style="display:none;">Admin Accounts</button>
+    <button class="tab" data-view="audit" id="tabAudit" style="display:none;">Change Log</button>
   </div>
 
   <div id="view-ingredients"></div>
@@ -143,7 +149,7 @@ async function api(path, opts={}){
     ...opts,
   });
   const data = await res.json().catch(()=>({}));
-  if(!res.ok) throw new Error(data.error || "요청 실패");
+  if(!res.ok) throw new Error(data.error || "Request failed");
   return data;
 }
 
@@ -175,7 +181,7 @@ document.getElementById('loginBtn').onclick = async () => {
 document.getElementById('signupBtn').onclick = async () => {
   hideAuthError();
   try{
-    const r = await api('/api/signup', {method:'POST', body: JSON.stringify({
+    await api('/api/signup', {method:'POST', body: JSON.stringify({
       companyName: document.getElementById('suCompany').value.trim(),
       name: document.getElementById('suName').value.trim(),
       email: document.getElementById('suEmail').value.trim(),
@@ -202,7 +208,7 @@ async function boot(){
   document.getElementById('appScreen').style.display='block';
   document.getElementById('companyNameLabel').textContent = data.company.name;
   document.getElementById('whoName').textContent = data.user.name;
-  document.getElementById('whoRole').textContent = data.user.role === 'owner' ? '오너' : '관리자';
+  document.getElementById('whoRole').textContent = data.user.role === 'owner' ? 'Owner' : 'Admin';
   if(data.user.role === 'owner'){
     document.getElementById('tabAdmins').style.display='inline-block';
     document.getElementById('tabAudit').style.display='inline-block';
@@ -228,6 +234,33 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
   });
 });
 
+// ---------- Shared renderers ----------
+function allergenTagsHtml(allergens, maxShow){
+  maxShow = maxShow || 5;
+  if(!allergens || !allergens.length) return '<span style="color:var(--ink-soft);font-size:13px;">None</span>';
+  const shown = allergens.slice(0, maxShow);
+  const rest = allergens.slice(maxShow);
+  let html = shown.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('');
+  if(rest.length){
+    html += `<details class="more-toggle" style="display:inline-block;"><summary>+${rest.length} more</summary>${rest.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('')}</details>`;
+  }
+  return html;
+}
+
+function dietBadgesHtml(dietFlags){
+  if(!dietFlags) return '';
+  const badge = (ok, label, culprits) => {
+    if(ok) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${label}</span>`;
+    const maxNames = 3;
+    let names = (culprits||[]).slice(0, maxNames).map(escapeHtml).join(', ');
+    if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} more`;
+    const why = names ? ` (has: ${names})` : '';
+    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${label}${why}</span>`;
+  };
+  return badge(dietFlags.glutenFree, 'Gluten Free', dietFlags.glutenCulprits)
+       + badge(dietFlags.dairyFree, 'Dairy Free', dietFlags.dairyCulprits);
+}
+
 // ---------- Suppliers ----------
 async function loadSuppliers(){
   const d = await api('/api/suppliers');
@@ -240,56 +273,40 @@ async function loadIngredients(){
   ingredientsCache = d.ingredients;
 }
 
-function allergenTagsHtml(allergens){
-  if(!allergens || !allergens.length) return '<span style="color:var(--ink-soft);font-size:13px;">없음</span>';
-  return allergens.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${a.name}</span>`).join('');
-}
-
-function dietBadgesHtml(dietFlags){
-  if(!dietFlags) return '';
-  const badge = (ok, label, culprits) => {
-    if(ok) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${label}</span>`;
-    const why = culprits && culprits.length ? ` (원인: ${culprits.map(escapeHtml).join(', ')})` : '';
-    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">${label} 아님${why}</span>`;
-  };
-  return badge(dietFlags.glutenFree, 'Gluten Free', dietFlags.glutenCulprits)
-       + badge(dietFlags.dairyFree, 'Dairy Free', dietFlags.dairyCulprits);
-}
-
 function renderIngredientsView(){
   const el = document.getElementById('view-ingredients');
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">재료 사진 등록</h2>
-        <div class="dropzone" id="dz">사진을 끌어놓거나 클릭해서 선택</div>
+        <h2 style="font-size:17px;margin-bottom:12px;">Register Ingredient Photo</h2>
+        <div class="dropzone" id="dz">Drag & drop a photo, or click to select</div>
         <input type="file" id="fileInput" accept="image/*" capture="environment">
         <div class="preview" id="preview"><img id="previewImg"></div>
-        <button class="primary" style="width:100%;margin-top:10px;" id="analyzeBtn" disabled>AI로 분석하기</button>
+        <button class="primary" style="width:100%;margin-top:10px;" id="analyzeBtn" disabled>Analyze with AI</button>
         <div id="analyzeStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
         <div id="analyzeResult"></div>
       </div>
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">등록된 재료 (${ingredientsCache.length})</h2>
-        <div id="ingredientList">${ingredientsCache.length ? '' : '<div class="empty">아직 등록된 재료가 없습니다.</div>'}</div>
+        <h2 style="font-size:17px;margin-bottom:12px;">Registered Ingredients (${ingredientsCache.length})</h2>
+        <div id="ingredientList">${ingredientsCache.length ? '' : '<div class="empty">No ingredients registered yet.</div>'}</div>
       </div>
     </div>
   `;
   const listEl = document.getElementById('ingredientList');
   if(ingredientsCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>이름</th><th>공급업체 / 코드</th><th>알러지원</th><th>수정</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Allergens</th><th>Updated</th><th></th></tr></thead><tbody>
       ${ingredientsCache.map(ing => `
         <tr>
-          <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">사진</button>` : ''}</td>
+          <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
           <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
           <td>${allergenTagsHtml(ing.allergens)}</td>
           <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(ing.updated_by_name||'')}<br>${formatDate(ing.updated_at)}</td>
-          <td><button class="danger" data-del-ing="${ing.id}">삭제</button></td>
+          <td><button class="danger" data-del-ing="${ing.id}">Delete</button></td>
         </tr>`).join('')}
     </tbody></table>`;
     listEl.querySelectorAll('[data-del-ing]').forEach(btn=>{
       btn.onclick = async () => {
-        if(!confirm('이 재료를 삭제할까요?')) return;
+        if(!confirm('Delete this ingredient?')) return;
         await api('/api/ingredients/'+btn.dataset.delIng, {method:'DELETE'});
         await loadIngredients(); renderIngredientsView();
       };
@@ -340,37 +357,35 @@ function renderIngredientsView(){
 
   analyzeBtn.onclick = async () => {
     analyzeBtn.disabled = true;
-    document.getElementById('analyzeStatus').innerHTML = '<span class="spinner"></span> 분석 중...';
+    document.getElementById('analyzeStatus').innerHTML = '<span class="spinner"></span> Analyzing...';
     document.getElementById('analyzeResult').innerHTML = '';
     try{
       currentAnalysis = await api('/api/ingredients/analyze', {method:'POST', body: JSON.stringify({imageBase64: currentImageBase64})});
       document.getElementById('analyzeStatus').textContent = '';
       document.getElementById('analyzeResult').innerHTML = `
-        <label>재료 이름</label>
-        <input id="newIngName" placeholder="예: 간장, 커리 (일반 이름으로)">
-        <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">감지된 알러지원</div>
-        <div>${allergenTagsHtml(currentAnalysis.allergens)}</div>
+        <label>Ingredient name</label>
+        <input id="newIngName" placeholder="e.g. Soy Sauce, Curry (generic name)">
+        <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">Detected allergens</div>
+        <div>${allergenTagsHtml(currentAnalysis.allergens, 26)}</div>
         ${currentAnalysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(currentAnalysis.notes)}</div>` : ''}
-
         <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
-          <input type="checkbox" id="isSupplierProduct" style="width:auto;"> 특정 공급업체의 제품(시제품)인가요?
+          <input type="checkbox" id="isSupplierProduct" style="width:auto;"> Is this a specific supplier's product?
         </label>
         <div id="supplierFields" style="display:none;margin-top:8px;">
-          <label>제품코드 (인보이스의 Code)</label>
-          <input id="newIngCode" placeholder="예: CR-4521">
+          <label>Product code (from invoice)</label>
+          <input id="newIngCode" placeholder="e.g. CR-4521">
           <div id="codeLookupMsg" style="font-size:12.5px;margin-top:4px;"></div>
-          <label>공급업체</label>
+          <label>Supplier</label>
           <select id="newIngSupplier">
-            <option value="">선택...</option>
+            <option value="">Select...</option>
             ${suppliersCache.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
-            <option value="__new__">+ 새 공급업체 추가</option>
+            <option value="__new__">+ Add new supplier</option>
           </select>
-          <input id="newSupplierName" placeholder="새 공급업체 이름" style="display:none;margin-top:6px;">
-          <label>가격 (선택)</label>
-          <input id="newIngPrice" type="number" step="0.01" placeholder="예: 12.50">
+          <input id="newSupplierName" placeholder="New supplier name" style="display:none;margin-top:6px;">
+          <label>Price (optional)</label>
+          <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 12.50">
         </div>
-
-        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">이 결과로 저장</button>
+        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">Save this result</button>
       `;
 
       const toggle = document.getElementById('isSupplierProduct');
@@ -385,10 +400,10 @@ function renderIngredientsView(){
         const res = await api('/api/ingredients/lookup?code=' + encodeURIComponent(code));
         if(res.ingredient){
           msgEl.style.color = 'var(--warn)';
-          msgEl.textContent = `이미 등록된 제품코드입니다 (${res.ingredient.name} · ${res.ingredient.supplier_name||''}). 새로 만들면 별개 재료로 등록됩니다.`;
+          msgEl.textContent = `This product code is already registered (${res.ingredient.name} · ${res.ingredient.supplier_name||''}). Saving will create a separate entry.`;
         } else {
           msgEl.style.color = 'var(--safe)';
-          msgEl.textContent = '아직 등록되지 않은 제품코드입니다.';
+          msgEl.textContent = 'This product code is not registered yet.';
         }
       });
 
@@ -398,7 +413,7 @@ function renderIngredientsView(){
 
       document.getElementById('saveIngBtn').onclick = async () => {
         const name = document.getElementById('newIngName').value.trim();
-        if(!name){ alert('재료 이름을 입력해주세요.'); return; }
+        if(!name){ alert('Please enter an ingredient name.'); return; }
 
         let supplierId = null, productCode = null, price = null;
         if(toggle.checked){
@@ -408,7 +423,7 @@ function renderIngredientsView(){
           const supplierSelect = document.getElementById('newIngSupplier').value;
           if(supplierSelect === '__new__'){
             const newName = document.getElementById('newSupplierName').value.trim();
-            if(!newName){ alert('새 공급업체 이름을 입력해주세요.'); return; }
+            if(!newName){ alert('Please enter a new supplier name.'); return; }
             const r = await api('/api/suppliers', {method:'POST', body: JSON.stringify({name:newName})});
             supplierId = r.supplier.id;
             await loadSuppliers();
@@ -447,30 +462,77 @@ function renderMenuView(){
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">새 메뉴 만들기</h2>
-        <label>메뉴 이름</label>
-        <input id="newMenuName" placeholder="예: 클럽 샌드위치">
-        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">사용 재료 선택</div>
-        <div id="menuIngChips">${ingredientsCache.map(ing=>`<span class="chip" data-ing="${ing.id}">${escapeHtml(ing.name)}</span>`).join('') || '<span class="empty">먼저 재료를 등록해주세요.</span>'}</div>
-        <button class="primary" style="width:100%;margin-top:14px;" id="saveMenuBtn">메뉴 저장</button>
+        <h2 style="font-size:17px;margin-bottom:12px;">Create New Menu Item</h2>
+        <label>Menu item name</label>
+        <input id="newMenuName" placeholder="e.g. Club Sandwich">
+        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">Select ingredients used</div>
+        <input id="ingSearchInput" placeholder="Search ingredients by name...">
+        <div class="chip-grid" id="supplierFilterRow" style="margin-top:8px;"></div>
+        <div class="ing-picker-box" id="menuIngChips"></div>
+        <button class="primary" style="width:100%;margin-top:14px;" id="saveMenuBtn">Save Menu Item</button>
       </div>
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">등록된 메뉴 (${menuCache.length})</h2>
-        <div id="menuList">${menuCache.length ? '' : '<div class="empty">아직 등록된 메뉴가 없습니다.</div>'}</div>
+        <h2 style="font-size:17px;margin-bottom:12px;">Registered Menu Items (${menuCache.length})</h2>
+        <div id="menuList">${menuCache.length ? '' : '<div class="empty">No menu items registered yet.</div>'}</div>
       </div>
     </div>
   `;
+
   let selectedIngIds = new Set();
-  el.querySelectorAll('#menuIngChips .chip').forEach(chip => {
-    chip.onclick = () => {
-      const id = chip.dataset.ing;
-      if(selectedIngIds.has(id)){ selectedIngIds.delete(id); chip.classList.remove('on'); }
-      else { selectedIngIds.add(id); chip.classList.add('on'); }
-    };
+  let currentFilter = 'all';
+  let currentSearch = '';
+
+  function ingredientMatchesFilter(ing){
+    if(currentFilter === 'all') return true;
+    if(currentFilter === 'none') return !ing.supplier_id;
+    return ing.supplier_id === currentFilter;
+  }
+
+  function renderFilterRow(){
+    const row = document.getElementById('supplierFilterRow');
+    const filters = [
+      {id:'all', label:'All'},
+      {id:'none', label:'No Supplier'},
+      ...suppliersCache.map(s => ({id:s.id, label:s.name})),
+    ];
+    row.innerHTML = filters.map(f => `<button type="button" class="chip filter ${currentFilter===f.id?'on':''}" data-filter="${f.id}">${escapeHtml(f.label)}</button>`).join('');
+    row.querySelectorAll('[data-filter]').forEach(btn => {
+      btn.onclick = () => { currentFilter = btn.dataset.filter; renderFilterRow(); renderChips(); };
+    });
+  }
+
+  function renderChips(){
+    const box = document.getElementById('menuIngChips');
+    const q = currentSearch.trim().toLowerCase();
+    const filtered = ingredientsCache.filter(ing => ingredientMatchesFilter(ing) && (!q || ing.name.toLowerCase().includes(q)));
+    if(!ingredientsCache.length){
+      box.innerHTML = '<span class="empty">Register ingredients first.</span>';
+      return;
+    }
+    if(!filtered.length){
+      box.innerHTML = '<span class="empty">No matching ingredients.</span>';
+      return;
+    }
+    box.innerHTML = filtered.map(ing => `<span class="chip ${selectedIngIds.has(ing.id)?'on':''}" data-ing="${ing.id}">${escapeHtml(ing.name)}${ing.supplier_name ? ' <span style="opacity:.7;">('+escapeHtml(ing.supplier_name)+')</span>' : ''}</span>`).join('');
+    box.querySelectorAll('[data-ing]').forEach(chip => {
+      chip.onclick = () => {
+        const id = chip.dataset.ing;
+        if(selectedIngIds.has(id)){ selectedIngIds.delete(id); chip.classList.remove('on'); }
+        else { selectedIngIds.add(id); chip.classList.add('on'); }
+      };
+    });
+  }
+
+  renderFilterRow();
+  renderChips();
+  document.getElementById('ingSearchInput').addEventListener('input', e => {
+    currentSearch = e.target.value;
+    renderChips();
   });
+
   document.getElementById('saveMenuBtn').onclick = async () => {
     const name = document.getElementById('newMenuName').value.trim();
-    if(!name){ alert('메뉴 이름을 입력해주세요.'); return; }
+    if(!name){ alert('Please enter a menu item name.'); return; }
     await api('/api/menu-items', {method:'POST', body: JSON.stringify({name, ingredientIds:[...selectedIngIds]})});
     await loadMenu();
     renderMenuView();
@@ -478,19 +540,19 @@ function renderMenuView(){
 
   const listEl = document.getElementById('menuList');
   if(menuCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>메뉴</th><th>알러지원</th><th>Free 표시</th><th>수정</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>Menu Item</th><th>Allergens</th><th>Free Labels</th><th>Updated</th><th></th></tr></thead><tbody>
       ${menuCache.map(m => `
         <tr>
           <td><b>${escapeHtml(m.name)}</b></td>
           <td>${allergenTagsHtml(m.allergens)}</td>
           <td>${dietBadgesHtml(m.dietFlags)}</td>
           <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(m.updated_by_name||'')}<br>${formatDate(m.updated_at)}</td>
-          <td><button class="danger" data-del-menu="${m.id}">삭제</button></td>
+          <td><button class="danger" data-del-menu="${m.id}">Delete</button></td>
         </tr>`).join('')}
     </tbody></table>`;
     listEl.querySelectorAll('[data-del-menu]').forEach(btn=>{
       btn.onclick = async () => {
-        if(!confirm('이 메뉴를 삭제할까요?')) return;
+        if(!confirm('Delete this menu item?')) return;
         await api('/api/menu-items/'+btn.dataset.delMenu, {method:'DELETE'});
         await loadMenu(); renderMenuView();
       };
@@ -504,18 +566,18 @@ function renderStaffLinkView(){
   const url = `${location.origin}/staff/${ME.company.slug}?code=${ME.company.staffCode}`;
   el.innerHTML = `
     <div class="panel">
-      <h2 style="font-size:17px;">직원/매장용 조회 화면</h2>
-      <p style="font-size:13.5px;color:var(--ink-soft);">아래 링크를 매장 태블릿이나 POS에 즐겨찾기 해두세요. 로그인 없이 메뉴별 알러지를 검색할 수 있는 읽기 전용 화면입니다.</p>
+      <h2 style="font-size:17px;">Staff / Front-of-house lookup screen</h2>
+      <p style="font-size:13.5px;color:var(--ink-soft);">Bookmark this link on a tablet or POS. No login needed — search menu items and see allergens at a glance.</p>
       <div class="staff-link-box">
         <code>${url}</code><br><br>
-        <button class="ghost" id="copyLinkBtn">링크 복사</button>
+        <button class="ghost" id="copyLinkBtn">Copy Link</button>
       </div>
     </div>
   `;
   document.getElementById('copyLinkBtn').onclick = () => {
     navigator.clipboard.writeText(url);
-    document.getElementById('copyLinkBtn').textContent = '복사됨!';
-    setTimeout(()=>{ document.getElementById('copyLinkBtn').textContent='링크 복사'; }, 1500);
+    document.getElementById('copyLinkBtn').textContent = 'Copied!';
+    setTimeout(()=>{ document.getElementById('copyLinkBtn').textContent='Copy Link'; }, 1500);
   };
 }
 
@@ -526,19 +588,19 @@ async function loadAdmins(){
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">관리자 계정 추가</h2>
-        <label>이름</label><input id="newAdminName">
-        <label>이메일</label><input id="newAdminEmail" type="email">
-        <label>비밀번호 (8자 이상)</label><input id="newAdminPw" type="password">
-        <button class="primary" style="width:100%;margin-top:14px;" id="addAdminBtn">관리자 계정 생성</button>
+        <h2 style="font-size:17px;margin-bottom:12px;">Add Admin Account</h2>
+        <label>Name</label><input id="newAdminName">
+        <label>Email</label><input id="newAdminEmail" type="email">
+        <label>Password (min 8 characters)</label><input id="newAdminPw" type="password">
+        <button class="primary" style="width:100%;margin-top:14px;" id="addAdminBtn">Create Admin Account</button>
         <div class="error-box" id="adminError"></div>
       </div>
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">계정 목록</h2>
-        <table><thead><tr><th>이름</th><th>이메일</th><th>역할</th><th></th></tr></thead><tbody>
+        <h2 style="font-size:17px;margin-bottom:12px;">Account List</h2>
+        <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody>
           ${d.users.map(u => `<tr>
-            <td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td>${u.role==='owner'?'오너':'관리자'}</td>
-            <td>${u.role!=='owner' ? `<button class="danger" data-del-user="${u.id}">삭제</button>` : ''}</td>
+            <td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td>${u.role==='owner'?'Owner':'Admin'}</td>
+            <td>${u.role!=='owner' ? `<button class="danger" data-del-user="${u.id}">Delete</button>` : ''}</td>
           </tr>`).join('')}
         </tbody></table>
       </div>
@@ -558,7 +620,7 @@ async function loadAdmins(){
   };
   el.querySelectorAll('[data-del-user]').forEach(btn=>{
     btn.onclick = async () => {
-      if(!confirm('이 계정을 삭제할까요?')) return;
+      if(!confirm('Delete this account?')) return;
       await api('/api/admins/'+btn.dataset.delUser, {method:'DELETE'});
       loadAdmins();
     };
@@ -569,25 +631,25 @@ async function loadAdmins(){
 async function loadAudit(){
   const d = await api('/api/audit-log');
   const el = document.getElementById('view-audit');
-  const actionKo = {created:'생성', updated:'수정', deleted:'삭제'};
-  const typeKo = {ingredient:'재료', menu_item:'메뉴', admin_account:'관리자 계정'};
+  const actionLabel = {created:'Created', updated:'Updated', deleted:'Deleted'};
+  const typeLabel = {ingredient:'Ingredient', menu_item:'Menu Item', admin_account:'Admin Account'};
   el.innerHTML = `
     <div class="panel">
-      <h2 style="font-size:17px;margin-bottom:12px;">수정 이력</h2>
-      ${d.log.length ? `<table><thead><tr><th>시간</th><th>누가</th><th>작업</th><th>대상</th></tr></thead><tbody>
+      <h2 style="font-size:17px;margin-bottom:12px;">Change Log</h2>
+      ${d.log.length ? `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th></tr></thead><tbody>
         ${d.log.map(l => `<tr>
           <td style="font-size:12.5px;color:var(--ink-soft);">${formatDate(l.created_at)}</td>
           <td><b>${escapeHtml(l.user_name)}</b></td>
-          <td>${actionKo[l.action]||l.action} · ${typeKo[l.target_type]||l.target_type}</td>
+          <td>${actionLabel[l.action]||l.action} · ${typeLabel[l.target_type]||l.target_type}</td>
           <td>${escapeHtml(l.target_name)}</td>
         </tr>`).join('')}
-      </tbody></table>` : '<div class="empty">아직 기록이 없습니다.</div>'}
+      </tbody></table>` : '<div class="empty">No records yet.</div>'}
     </div>
   `;
 }
 
 function escapeHtml(str){ const d=document.createElement('div'); d.textContent = str==null?'':str; return d.innerHTML; }
-function formatDate(iso){ if(!iso) return ''; const d = new Date(iso); return d.toLocaleString('ko-KR', {dateStyle:'medium', timeStyle:'short'}); }
+function formatDate(iso){ if(!iso) return ''; const d = new Date(iso); return d.toLocaleString('en-NZ', {dateStyle:'medium', timeStyle:'short'}); }
 
 boot();
 </script>

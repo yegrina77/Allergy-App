@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>메뉴 알러지 확인</title>
+<title>Menu Allergen Check</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,600;0,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -26,6 +26,9 @@
   }
   .item .name{font-family:'Newsreader',serif;font-weight:600;font-size:18px;}
   .tag{display:inline-flex;padding:5px 12px;border-radius:16px;font-size:13px;font-weight:600;background:var(--warn-soft);color:var(--warn);margin:6px 6px 0 0;}
+  .more-toggle{display:inline-block;margin:6px 6px 0 0;}
+  .more-toggle summary{list-style:none;font-size:12.5px;color:var(--ink-soft);cursor:pointer;}
+  .more-toggle summary::-webkit-details-marker{display:none;}
   .safe-note{color:var(--accent);font-size:13.5px;margin-top:8px;font-weight:500;}
   .empty{color:var(--ink-soft);text-align:center;padding:40px 10px;font-size:14px;}
   .error-box{background:var(--danger-soft);color:var(--danger);padding:16px;border-radius:10px;font-size:14px;}
@@ -34,9 +37,9 @@
 <body>
 <div class="wrap">
   <div class="sub" id="companyLabel" style="font-weight:600;color:var(--accent);"></div>
-  <h1>메뉴 알러지 확인</h1>
-  <div class="sub">메뉴 이름을 검색하면 등록된 알러지원을 확인할 수 있습니다.</div>
-  <input id="search" placeholder="메뉴 이름 검색...">
+  <h1>Menu Allergen Check</h1>
+  <div class="sub">Search a menu item to see registered allergens.</div>
+  <input id="search" placeholder="Search menu item...">
   <div id="results"></div>
 </div>
 <script>
@@ -49,39 +52,52 @@ async function load(){
     const res = await fetch(`/api/staff/${slug}/menu?code=${encodeURIComponent(code)}`);
     const data = await res.json();
     if(!res.ok){
-      document.getElementById('results').innerHTML = `<div class="error-box">${data.error || '접근할 수 없습니다.'}</div>`;
+      document.getElementById('results').innerHTML = `<div class="error-box">${data.error || 'Access denied.'}</div>`;
       return;
     }
     document.getElementById('companyLabel').textContent = data.companyName;
     allItems = data.menuItems;
     render(allItems);
   }catch(e){
-    document.getElementById('results').innerHTML = `<div class="error-box">불러오는 중 오류가 발생했습니다.</div>`;
+    document.getElementById('results').innerHTML = `<div class="error-box">Something went wrong while loading.</div>`;
   }
 }
 
-function render(items){
-  const el = document.getElementById('results');
-  if(!items.length){ el.innerHTML = '<div class="empty">일치하는 메뉴가 없습니다.</div>'; return; }
-  el.innerHTML = items.map(m => `
-    <div class="item">
-      <div class="name">${escapeHtml(m.name)}</div>
-      ${m.allergens.length
-        ? m.allergens.map(a => `<span class="tag">${escapeHtml(a.name)}</span>`).join('')
-        : '<div class="safe-note">등록된 알러지원 없음</div>'}
-      ${dietBadgesHtml(m.dietFlags)}
-    </div>
-  `).join('');
+function allergenTagsHtml(allergens, maxShow){
+  maxShow = maxShow || 6;
+  if(!allergens.length) return '<div class="safe-note">No registered allergens</div>';
+  const shown = allergens.slice(0, maxShow);
+  const rest = allergens.slice(maxShow);
+  let html = shown.map(a => `<span class="tag">${escapeHtml(a.name)}</span>`).join('');
+  if(rest.length){
+    html += `<details class="more-toggle"><summary>+${rest.length} more</summary>${rest.map(a => `<span class="tag">${escapeHtml(a.name)}</span>`).join('')}</details>`;
+  }
+  return html;
 }
 
 function dietBadgesHtml(dietFlags){
   if(!dietFlags) return '';
   const badge = (ok, label, culprits) => {
     if(ok) return `<span class="tag" style="background:var(--accent-soft);color:var(--accent);">${label}</span>`;
-    const why = culprits && culprits.length ? ` (원인: ${culprits.map(escapeHtml).join(', ')})` : '';
-    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">${label} 아님${why}</span>`;
+    const maxNames = 3;
+    let names = (culprits||[]).slice(0, maxNames).map(escapeHtml).join(', ');
+    if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} more`;
+    const why = names ? ` (has: ${names})` : '';
+    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${label}${why}</span>`;
   };
   return `<div style="margin-top:8px;">${badge(dietFlags.glutenFree, 'Gluten Free', dietFlags.glutenCulprits)}${badge(dietFlags.dairyFree, 'Dairy Free', dietFlags.dairyCulprits)}</div>`;
+}
+
+function render(items){
+  const el = document.getElementById('results');
+  if(!items.length){ el.innerHTML = '<div class="empty">No matching menu items.</div>'; return; }
+  el.innerHTML = items.map(m => `
+    <div class="item">
+      <div class="name">${escapeHtml(m.name)}</div>
+      ${allergenTagsHtml(m.allergens)}
+      ${dietBadgesHtml(m.dietFlags)}
+    </div>
+  `).join('');
 }
 
 document.getElementById('search').addEventListener('input', e => {
