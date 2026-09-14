@@ -239,8 +239,13 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
     ['ingredients','subrecipes','menu','staffLink','admins','audit'].forEach(v => {
       document.getElementById('view-'+v).style.display = (v===tab.dataset.view) ? 'block' : 'none';
     });
-    if(tab.dataset.view === 'admins') loadAdmins();
-    if(tab.dataset.view === 'audit') loadAudit();
+    const v = tab.dataset.view;
+    if(v === 'ingredients') renderIngredientsView();
+    if(v === 'subrecipes') renderSubRecipesView();
+    if(v === 'menu') renderMenuView();
+    if(v === 'staffLink') renderStaffLinkView();
+    if(v === 'admins') loadAdmins();
+    if(v === 'audit') loadAudit();
   });
 });
 
