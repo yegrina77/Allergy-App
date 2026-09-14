@@ -552,8 +552,12 @@ def compute_menu_allergens(ingredient_ids):
 
 
 def compute_diet_flags(allergens_list):
-    gluten_hits = [a for a in allergens_list if a["name"] in GLUTEN_SOURCES]
-    dairy_hits = [a for a in allergens_list if a["name"] in DAIRY_SOURCES]
+    def norm(s):
+        return (s or "").strip().lower()
+    gluten_norm = {norm(x) for x in GLUTEN_SOURCES}
+    dairy_norm = {norm(x) for x in DAIRY_SOURCES}
+    gluten_hits = [a for a in allergens_list if norm(a.get("name")) in gluten_norm]
+    dairy_hits = [a for a in allergens_list if norm(a.get("name")) in dairy_norm]
     gluten_ingredients = sorted({ing for a in gluten_hits for ing in a.get("ingredients", [])})
     dairy_ingredients = sorted({ing for a in dairy_hits for ing in a.get("ingredients", [])})
     return {
