@@ -15,11 +15,17 @@
   body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;}
   .wrap{max-width:640px;margin:0 auto;padding:28px 18px 60px;}
   h1{font-family:'Newsreader',serif;font-weight:700;font-size:26px;margin:4px 0 4px;}
-  .sub{color:var(--ink-soft);font-size:14px;margin-bottom:22px;}
+  .sub{color:var(--ink-soft);font-size:14px;margin-bottom:16px;}
   input#search{
     width:100%;padding:14px 16px;font-size:16px;border:1.5px solid var(--border);border-radius:10px;
-    font-family:inherit;background:#fff;
+    font-family:inherit;background:#fff;box-sizing:border-box;
   }
+  .filter-row{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px;}
+  .filter-btn{
+    padding:8px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;
+    font-family:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;
+  }
+  .filter-btn.on{background:var(--accent);border-color:var(--accent);color:#fff;}
   .item{
     background:var(--panel);border:1px solid var(--border);border-radius:10px;
     padding:16px 18px;margin-top:12px;
@@ -38,14 +44,38 @@
 <div class="wrap">
   <div class="sub" id="companyLabel" style="font-weight:600;color:var(--accent);"></div>
   <h1>Menu Allergen Check</h1>
-  <div class="sub">Search a menu item to see registered allergens.</div>
+  <div class="sub">Search a menu item, or filter by diet, to see registered allergens.</div>
   <input id="search" placeholder="Search menu item...">
+  <div class="filter-row" id="filterRow"></div>
   <div id="results"></div>
 </div>
 <script>
 const slug = location.pathname.split('/').pop();
 const code = new URLSearchParams(location.search).get('code') || '';
 let allItems = [];
+let activeFilters = new Set();
+
+const FILTER_DEFS = [
+  {id:'glutenFree', label:'Gluten Free', source:'diet'},
+  {id:'dairyFree', label:'Dairy Free', source:'diet'},
+  {id:'nutFree', label:'Nut Free', source:'diet'},
+  {id:'shellfishFree', label:'Shellfish Free', source:'diet'},
+  {id:'vegetarian', label:'Vegetarian', source:'veg'},
+  {id:'vegan', label:'Vegan', source:'veg'},
+];
+
+function renderFilterRow(){
+  const row = document.getElementById('filterRow');
+  row.innerHTML = FILTER_DEFS.map(f => `<button type="button" class="filter-btn ${activeFilters.has(f.id)?'on':''}" data-f="${f.id}">${f.label}</button>`).join('');
+  row.querySelectorAll('[data-f]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.f;
+      if(activeFilters.has(id)) activeFilters.delete(id); else activeFilters.add(id);
+      renderFilterRow();
+      applyAndRender();
+    };
+  });
+}
 
 async function load(){
   try{
@@ -57,10 +87,26 @@ async function load(){
     }
     document.getElementById('companyLabel').textContent = data.companyName;
     allItems = data.menuItems;
-    render(allItems);
+    renderFilterRow();
+    applyAndRender();
   }catch(e){
     document.getElementById('results').innerHTML = `<div class="error-box">Something went wrong while loading.</div>`;
   }
+}
+
+function itemMatchesFilters(item){
+  for(const id of activeFilters){
+    const def = FILTER_DEFS.find(f => f.id === id);
+    const val = def.source === 'diet' ? (item.dietFlags||{})[id] : (item.vegFlags||{})[id];
+    if(val !== true) return false;
+  }
+  return true;
+}
+
+function applyAndRender(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const filtered = allItems.filter(m => (!q || m.name.toLowerCase().includes(q)) && itemMatchesFilters(m));
+  render(filtered);
 }
 
 function allergenTagsHtml(allergens, maxShow){
@@ -75,17 +121,41 @@ function allergenTagsHtml(allergens, maxShow){
   return html;
 }
 
-function dietBadgesHtml(dietFlags){
+function dietBadgesHtml(dietFlags, vegFlags){
   if(!dietFlags) return '';
-  const badge = (ok, label, culprits) => {
-    if(ok) return `<span class="tag" style="background:var(--accent-soft);color:var(--accent);">${label}</span>`;
+  const dietDefs = [
+    {key:'gluten', label:'Gluten Free'},
+    {key:'dairy', label:'Dairy Free'},
+    {key:'nut', label:'Nut Free'},
+    {key:'shellfish', label:'Shellfish Free'},
+  ];
+  const badges = dietDefs.map(def => {
+    const ok = dietFlags[def.key+'Free'];
+    const culprits = dietFlags[def.key+'Culprits'] || [];
+    if(ok) return `<span class="tag" style="background:var(--accent-soft);color:var(--accent);">${def.label}</span>`;
     const maxNames = 3;
-    let names = (culprits||[]).slice(0, maxNames).map(escapeHtml).join(', ');
-    if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} more`;
+    let names = culprits.slice(0, maxNames).map(escapeHtml).join(', ');
+    if(culprits.length > maxNames) names += `, +${culprits.length - maxNames} more`;
     const why = names ? ` (has: ${names})` : '';
-    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${label}${why}</span>`;
-  };
-  return `<div style="margin-top:8px;">${badge(dietFlags.glutenFree, 'Gluten Free', dietFlags.glutenCulprits)}${badge(dietFlags.dairyFree, 'Dairy Free', dietFlags.dairyCulprits)}</div>`;
+    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${def.label}${why}</span>`;
+  }).join('');
+
+  let vegBadges = '';
+  if(vegFlags){
+    const one = (val, label, culprits) => {
+      if(val === true) return `<span class="tag" style="background:var(--accent-soft);color:var(--accent);">${label}</span>`;
+      if(val === false){
+        const maxNames = 3;
+        let names = (culprits||[]).slice(0, maxNames).map(escapeHtml).join(', ');
+        if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} more`;
+        const why = names ? ` (has: ${names})` : '';
+        return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${label}${why}</span>`;
+      }
+      return ''; // unknown/unclassified: omit rather than risk a false claim to customers
+    };
+    vegBadges = one(vegFlags.vegetarian, 'Vegetarian', vegFlags.vegetarianCulprits) + one(vegFlags.vegan, 'Vegan', vegFlags.veganCulprits);
+  }
+  return `<div style="margin-top:8px;">${badges}${vegBadges}</div>`;
 }
 
 function render(items){
@@ -95,15 +165,12 @@ function render(items){
     <div class="item">
       <div class="name">${escapeHtml(m.name)}</div>
       ${allergenTagsHtml(m.allergens)}
-      ${dietBadgesHtml(m.dietFlags)}
+      ${dietBadgesHtml(m.dietFlags, m.vegFlags)}
     </div>
   `).join('');
 }
 
-document.getElementById('search').addEventListener('input', e => {
-  const q = e.target.value.trim().toLowerCase();
-  render(q ? allItems.filter(m => m.name.toLowerCase().includes(q)) : allItems);
-});
+document.getElementById('search').addEventListener('input', applyAndRender);
 
 function escapeHtml(str){ const d=document.createElement('div'); d.textContent = str==null?'':str; return d.innerHTML; }
 load();

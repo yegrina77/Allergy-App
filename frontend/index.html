@@ -11,10 +11,11 @@
     --bg:#F5F6F1;--panel:#FFFFFF;--ink:#1E2A26;--ink-soft:#55635C;--border:#DBDFD3;
     --accent:#2F6F5E;--accent-soft:#E4EEE9;--warn:#B5501B;--warn-soft:#F7E9DE;
     --safe:#3D7A4D;--safe-soft:#E7F1E8;--danger:#A32B2B;--danger-soft:#F8E3E1;
+    --neutral:#7A7368;--neutral-soft:#EFEDE7;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.5;}
-  .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 80px;}
+  .wrap{max-width:1150px;margin:0 auto;padding:28px 20px 80px;}
   h1,h2{font-family:'Newsreader',serif;font-weight:600;margin:0;}
   a{color:var(--accent);}
   input,select{
@@ -47,8 +48,8 @@
   td{padding:9px 8px;border-bottom:1px solid #EEF0E9;vertical-align:top;}
   .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:16px;font-size:12px;font-weight:500;background:var(--warn-soft);color:var(--warn);margin:2px 3px 2px 0;}
   .tag.low{background:#FBF3E2;color:#8A6417;}
-  .more-toggle{font-size:11.5px;color:var(--ink-soft);cursor:pointer;}
-  .more-toggle summary{list-style:none;}
+  .more-toggle{display:inline-block;}
+  .more-toggle summary{list-style:none;font-size:11.5px;color:var(--ink-soft);cursor:pointer;}
   .more-toggle summary::-webkit-details-marker{display:none;}
   .dropzone{border:1.5px dashed var(--border);border-radius:8px;padding:22px 14px;text-align:center;cursor:pointer;color:var(--ink-soft);font-size:13.5px;}
   .dropzone.drag,.dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
@@ -66,7 +67,7 @@
   .empty{color:var(--ink-soft);font-size:13.5px;padding:20px 0;text-align:center;}
   .staff-link-box{background:var(--accent-soft);border-radius:8px;padding:14px 16px;font-size:13px;margin-top:14px;}
   .staff-link-box code{font-family:'IBM Plex Mono',monospace;background:#fff;padding:2px 6px;border-radius:4px;}
-  .ing-picker-box{border:1px solid var(--border);border-radius:8px;padding:12px;max-height:280px;overflow-y:auto;margin-top:8px;}
+  .ing-picker-box{border:1px solid var(--border);border-radius:8px;padding:12px;max-height:260px;overflow-y:auto;margin-top:8px;}
 </style>
 </head>
 <body>
@@ -79,7 +80,6 @@
       <button class="tab active" id="tabLogin">Log in</button>
       <button class="tab" id="tabSignup">New company</button>
     </div>
-
     <div id="loginForm">
       <label>Company URL code (slug)</label>
       <input id="loginSlug" placeholder="e.g. greenleaf-cafe">
@@ -89,7 +89,6 @@
       <input id="loginPassword" type="password">
       <button class="primary" style="width:100%;margin-top:16px;" id="loginBtn">Log in</button>
     </div>
-
     <div id="signupForm" style="display:none;">
       <label>Company (restaurant) name</label>
       <input id="suCompany" placeholder="e.g. Green Leaf Cafe">
@@ -101,7 +100,6 @@
       <input id="suPassword" type="password">
       <button class="primary" style="width:100%;margin-top:16px;" id="signupBtn">Create account (Owner)</button>
     </div>
-
     <div class="error-box" id="authError"></div>
   </div>
 </div>
@@ -120,6 +118,7 @@
 
   <div class="tabs" id="mainTabs">
     <button class="tab active" data-view="ingredients">Ingredients</button>
+    <button class="tab" data-view="subrecipes">Sub-Recipes</button>
     <button class="tab" data-view="menu">Menu</button>
     <button class="tab" data-view="staffLink">Staff View</button>
     <button class="tab" data-view="admins" id="tabAdmins" style="display:none;">Admin Accounts</button>
@@ -127,6 +126,7 @@
   </div>
 
   <div id="view-ingredients"></div>
+  <div id="view-subrecipes" style="display:none;"></div>
   <div id="view-menu" style="display:none;"></div>
   <div id="view-staffLink" style="display:none;"></div>
   <div id="view-admins" style="display:none;"></div>
@@ -137,8 +137,16 @@
 const ALLERGENS = ["Wheat","Rye","Barley","Oats","Spelt","Triticale","Crustacea","Molluscs","Fish","Egg","Milk",
   "Peanuts","Sesame","Soybeans","Lupin","Almond","Brazil Nut","Cashew","Hazelnut","Macadamia","Pecan","Pine Nut","Pistachio","Walnut","Sulphites","Royal Jelly"];
 
+const DIET_CATEGORY_LABELS = {
+  "": "Not set / Unknown",
+  "plant": "Plant-based",
+  "animal_non_meat": "Animal product (dairy, egg, honey) — vegetarian OK",
+  "meat_fish": "Meat or fish — not vegetarian",
+};
+
 let ME = null;
 let ingredientsCache = [];
+let subRecipesCache = [];
 let menuCache = [];
 let suppliersCache = [];
 
@@ -215,8 +223,10 @@ async function boot(){
   }
   await loadSuppliers();
   await loadIngredients();
+  await loadSubRecipes();
   await loadMenu();
   renderIngredientsView();
+  renderSubRecipesView();
   renderMenuView();
   renderStaffLinkView();
 }
@@ -226,7 +236,7 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
-    ['ingredients','menu','staffLink','admins','audit'].forEach(v => {
+    ['ingredients','subrecipes','menu','staffLink','admins','audit'].forEach(v => {
       document.getElementById('view-'+v).style.display = (v===tab.dataset.view) ? 'block' : 'none';
     });
     if(tab.dataset.view === 'admins') loadAdmins();
@@ -242,23 +252,91 @@ function allergenTagsHtml(allergens, maxShow){
   const rest = allergens.slice(maxShow);
   let html = shown.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('');
   if(rest.length){
-    html += `<details class="more-toggle" style="display:inline-block;"><summary>+${rest.length} more</summary>${rest.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('')}</details>`;
+    html += `<details class="more-toggle"><summary>+${rest.length} more</summary>${rest.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('')}</details>`;
   }
   return html;
 }
 
+const DIET_FLAG_UI = [
+  {key:'gluten', label:'Gluten Free'},
+  {key:'dairy', label:'Dairy Free'},
+  {key:'nut', label:'Nut Free'},
+  {key:'shellfish', label:'Shellfish Free'},
+];
+
 function dietBadgesHtml(dietFlags){
   if(!dietFlags) return '';
-  const badge = (ok, label, culprits) => {
-    if(ok) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${label}</span>`;
+  return DIET_FLAG_UI.map(def => {
+    const ok = dietFlags[def.key+'Free'];
+    const culprits = dietFlags[def.key+'Culprits'] || [];
+    if(ok) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${def.label}</span>`;
     const maxNames = 3;
-    let names = (culprits||[]).slice(0, maxNames).map(escapeHtml).join(', ');
-    if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} more`;
+    let names = culprits.slice(0, maxNames).map(escapeHtml).join(', ');
+    if(culprits.length > maxNames) names += `, +${culprits.length - maxNames} more`;
     const why = names ? ` (has: ${names})` : '';
-    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${label}${why}</span>`;
+    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${def.label}${why}</span>`;
+  }).join('');
+}
+
+function vegBadgesHtml(vegFlags){
+  if(!vegFlags) return '';
+  const one = (val, label, culprits) => {
+    if(val === true) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${label}</span>`;
+    if(val === false){
+      const maxNames = 3;
+      let names = (culprits||[]).slice(0, maxNames).map(escapeHtml).join(', ');
+      if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} more`;
+      const why = names ? ` (has: ${names})` : '';
+      return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${label}${why}</span>`;
+    }
+    return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">${label}: not classified</span>`;
   };
-  return badge(dietFlags.glutenFree, 'Gluten Free', dietFlags.glutenCulprits)
-       + badge(dietFlags.dairyFree, 'Dairy Free', dietFlags.dairyCulprits);
+  return one(vegFlags.vegetarian, 'Vegetarian', vegFlags.vegetarianCulprits) + one(vegFlags.vegan, 'Vegan', vegFlags.veganCulprits);
+}
+
+// ---------- Reusable ingredient picker (search + supplier filter + chips) ----------
+function setupIngredientPicker({searchId, filterRowId, boxId, selectedSet}){
+  let currentFilter = 'all';
+  let currentSearch = '';
+
+  function matches(ing){
+    if(currentFilter === 'all') return true;
+    if(currentFilter === 'none') return !ing.supplier_id;
+    return ing.supplier_id === currentFilter;
+  }
+
+  function renderFilterRow(){
+    const row = document.getElementById(filterRowId);
+    const filters = [
+      {id:'all', label:'All'},
+      {id:'none', label:'No Supplier'},
+      ...suppliersCache.map(s => ({id:s.id, label:s.name})),
+    ];
+    row.innerHTML = filters.map(f => `<button type="button" class="chip filter ${currentFilter===f.id?'on':''}" data-filter="${f.id}">${escapeHtml(f.label)}</button>`).join('');
+    row.querySelectorAll('[data-filter]').forEach(btn => {
+      btn.onclick = () => { currentFilter = btn.dataset.filter; renderFilterRow(); renderChips(); };
+    });
+  }
+
+  function renderChips(){
+    const box = document.getElementById(boxId);
+    const q = currentSearch.trim().toLowerCase();
+    const filtered = ingredientsCache.filter(ing => matches(ing) && (!q || ing.name.toLowerCase().includes(q)));
+    if(!ingredientsCache.length){ box.innerHTML = '<span class="empty">Register ingredients first.</span>'; return; }
+    if(!filtered.length){ box.innerHTML = '<span class="empty">No matching ingredients.</span>'; return; }
+    box.innerHTML = filtered.map(ing => `<span class="chip ${selectedSet.has(ing.id)?'on':''}" data-ing="${ing.id}">${escapeHtml(ing.name)}${ing.supplier_name ? ' <span style="opacity:.7;">('+escapeHtml(ing.supplier_name)+')</span>' : ''}</span>`).join('');
+    box.querySelectorAll('[data-ing]').forEach(chip => {
+      chip.onclick = () => {
+        const id = chip.dataset.ing;
+        if(selectedSet.has(id)){ selectedSet.delete(id); chip.classList.remove('on'); }
+        else { selectedSet.add(id); chip.classList.add('on'); }
+      };
+    });
+  }
+
+  renderFilterRow();
+  renderChips();
+  document.getElementById(searchId).addEventListener('input', e => { currentSearch = e.target.value; renderChips(); });
 }
 
 // ---------- Suppliers ----------
@@ -294,12 +372,13 @@ function renderIngredientsView(){
   `;
   const listEl = document.getElementById('ingredientList');
   if(ingredientsCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Allergens</th><th>Updated</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Allergens</th><th>Diet</th><th>Updated</th><th></th></tr></thead><tbody>
       ${ingredientsCache.map(ing => `
         <tr>
           <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
           <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
           <td>${allergenTagsHtml(ing.allergens)}</td>
+          <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
           <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(ing.updated_by_name||'')}<br>${formatDate(ing.updated_at)}</td>
           <td><button class="danger" data-del-ing="${ing.id}">Delete</button></td>
         </tr>`).join('')}
@@ -322,7 +401,6 @@ function renderIngredientsView(){
     });
   }
 
-  // upload handlers
   let currentImageBase64 = null, currentAnalysis = null;
   const dz = document.getElementById('dz'), fileInput = document.getElementById('fileInput');
   const preview = document.getElementById('preview'), previewImg = document.getElementById('previewImg');
@@ -368,6 +446,10 @@ function renderIngredientsView(){
         <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">Detected allergens</div>
         <div>${allergenTagsHtml(currentAnalysis.allergens, 26)}</div>
         ${currentAnalysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(currentAnalysis.notes)}</div>` : ''}
+        <label>Diet category (for Vegetarian/Vegan)</label>
+        <select id="newIngDietCategory">
+          ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
+        </select>
         <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
           <input type="checkbox" id="isSupplierProduct" style="width:auto;"> Is this a specific supplier's product?
         </label>
@@ -414,6 +496,7 @@ function renderIngredientsView(){
       document.getElementById('saveIngBtn').onclick = async () => {
         const name = document.getElementById('newIngName').value.trim();
         if(!name){ alert('Please enter an ingredient name.'); return; }
+        const dietCategory = document.getElementById('newIngDietCategory').value || null;
 
         let supplierId = null, productCode = null, price = null;
         if(toggle.checked){
@@ -436,7 +519,7 @@ function renderIngredientsView(){
           await api('/api/ingredients', {method:'POST', body: JSON.stringify({
             name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
             overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
-            supplierId, productCode, price, photoBase64: currentImageBase64,
+            supplierId, productCode, price, photoBase64: currentImageBase64, dietCategory,
           })});
         }catch(e){ alert(e.message); return; }
         await loadIngredients();
@@ -449,6 +532,65 @@ function renderIngredientsView(){
       analyzeBtn.disabled = false;
     }
   };
+}
+
+// ---------- Sub-Recipes ----------
+async function loadSubRecipes(){
+  const d = await api('/api/sub-recipes');
+  subRecipesCache = d.subRecipes;
+}
+
+function renderSubRecipesView(){
+  const el = document.getElementById('view-subrecipes');
+  el.innerHTML = `
+    <div class="row-flex">
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:4px;">Create Sub-Recipe</h2>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">A prep or sauce made from ingredients (e.g. "Curry Sauce"), not sold on its own — used inside one or more menu items.</p>
+        <label>Sub-recipe name</label>
+        <input id="newSrName" placeholder="e.g. Curry Sauce">
+        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">Ingredients used</div>
+        <input id="srIngSearch" placeholder="Search ingredients by name...">
+        <div class="chip-grid" id="srSupplierFilterRow" style="margin-top:8px;"></div>
+        <div class="ing-picker-box" id="srIngChips"></div>
+        <button class="primary" style="width:100%;margin-top:14px;" id="saveSrBtn">Save Sub-Recipe</button>
+      </div>
+      <div class="col panel">
+        <h2 style="font-size:17px;margin-bottom:12px;">Registered Sub-Recipes (${subRecipesCache.length})</h2>
+        <div id="srList">${subRecipesCache.length ? '' : '<div class="empty">No sub-recipes registered yet.</div>'}</div>
+      </div>
+    </div>
+  `;
+
+  const selectedIngIds = new Set();
+  setupIngredientPicker({searchId:'srIngSearch', filterRowId:'srSupplierFilterRow', boxId:'srIngChips', selectedSet:selectedIngIds});
+
+  document.getElementById('saveSrBtn').onclick = async () => {
+    const name = document.getElementById('newSrName').value.trim();
+    if(!name){ alert('Please enter a sub-recipe name.'); return; }
+    await api('/api/sub-recipes', {method:'POST', body: JSON.stringify({name, ingredientIds:[...selectedIngIds]})});
+    await loadSubRecipes();
+    renderSubRecipesView();
+  };
+
+  const listEl = document.getElementById('srList');
+  if(subRecipesCache.length){
+    listEl.innerHTML = `<table><thead><tr><th>Sub-Recipe</th><th>Allergens</th><th></th></tr></thead><tbody>
+      ${subRecipesCache.map(s => `
+        <tr>
+          <td><b>${escapeHtml(s.name)}</b></td>
+          <td>${allergenTagsHtml(s.allergens)}</td>
+          <td><button class="danger" data-del-sr="${s.id}">Delete</button></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+    listEl.querySelectorAll('[data-del-sr]').forEach(btn=>{
+      btn.onclick = async () => {
+        if(!confirm('Delete this sub-recipe? Menu items using it will lose those allergens.')) return;
+        await api('/api/sub-recipes/'+btn.dataset.delSr, {method:'DELETE'});
+        await loadSubRecipes(); renderSubRecipesView();
+      };
+    });
+  }
 }
 
 // ---------- Menu ----------
@@ -464,11 +606,16 @@ function renderMenuView(){
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">Create New Menu Item</h2>
         <label>Menu item name</label>
-        <input id="newMenuName" placeholder="e.g. Club Sandwich">
-        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">Select ingredients used</div>
+        <input id="newMenuName" placeholder="e.g. Chicken Katsu Curry">
+
+        <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">Sub-recipes used (e.g. sauces, preps)</div>
+        <div id="menuSrChips">${subRecipesCache.length ? '' : '<span class="empty">No sub-recipes yet — optional.</span>'}</div>
+
+        <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">Ingredients used directly</div>
         <input id="ingSearchInput" placeholder="Search ingredients by name...">
         <div class="chip-grid" id="supplierFilterRow" style="margin-top:8px;"></div>
         <div class="ing-picker-box" id="menuIngChips"></div>
+
         <button class="primary" style="width:100%;margin-top:14px;" id="saveMenuBtn">Save Menu Item</button>
       </div>
       <div class="col panel">
@@ -478,74 +625,41 @@ function renderMenuView(){
     </div>
   `;
 
-  let selectedIngIds = new Set();
-  let currentFilter = 'all';
-  let currentSearch = '';
+  const selectedIngIds = new Set();
+  const selectedSrIds = new Set();
+  setupIngredientPicker({searchId:'ingSearchInput', filterRowId:'supplierFilterRow', boxId:'menuIngChips', selectedSet:selectedIngIds});
 
-  function ingredientMatchesFilter(ing){
-    if(currentFilter === 'all') return true;
-    if(currentFilter === 'none') return !ing.supplier_id;
-    return ing.supplier_id === currentFilter;
-  }
-
-  function renderFilterRow(){
-    const row = document.getElementById('supplierFilterRow');
-    const filters = [
-      {id:'all', label:'All'},
-      {id:'none', label:'No Supplier'},
-      ...suppliersCache.map(s => ({id:s.id, label:s.name})),
-    ];
-    row.innerHTML = filters.map(f => `<button type="button" class="chip filter ${currentFilter===f.id?'on':''}" data-filter="${f.id}">${escapeHtml(f.label)}</button>`).join('');
-    row.querySelectorAll('[data-filter]').forEach(btn => {
-      btn.onclick = () => { currentFilter = btn.dataset.filter; renderFilterRow(); renderChips(); };
-    });
-  }
-
-  function renderChips(){
-    const box = document.getElementById('menuIngChips');
-    const q = currentSearch.trim().toLowerCase();
-    const filtered = ingredientsCache.filter(ing => ingredientMatchesFilter(ing) && (!q || ing.name.toLowerCase().includes(q)));
-    if(!ingredientsCache.length){
-      box.innerHTML = '<span class="empty">Register ingredients first.</span>';
-      return;
-    }
-    if(!filtered.length){
-      box.innerHTML = '<span class="empty">No matching ingredients.</span>';
-      return;
-    }
-    box.innerHTML = filtered.map(ing => `<span class="chip ${selectedIngIds.has(ing.id)?'on':''}" data-ing="${ing.id}">${escapeHtml(ing.name)}${ing.supplier_name ? ' <span style="opacity:.7;">('+escapeHtml(ing.supplier_name)+')</span>' : ''}</span>`).join('');
-    box.querySelectorAll('[data-ing]').forEach(chip => {
+  const srBox = document.getElementById('menuSrChips');
+  if(subRecipesCache.length){
+    srBox.innerHTML = subRecipesCache.map(s => `<span class="chip" data-sr="${s.id}">${escapeHtml(s.name)}</span>`).join('');
+    srBox.querySelectorAll('[data-sr]').forEach(chip => {
       chip.onclick = () => {
-        const id = chip.dataset.ing;
-        if(selectedIngIds.has(id)){ selectedIngIds.delete(id); chip.classList.remove('on'); }
-        else { selectedIngIds.add(id); chip.classList.add('on'); }
+        const id = chip.dataset.sr;
+        if(selectedSrIds.has(id)){ selectedSrIds.delete(id); chip.classList.remove('on'); }
+        else { selectedSrIds.add(id); chip.classList.add('on'); }
       };
     });
   }
 
-  renderFilterRow();
-  renderChips();
-  document.getElementById('ingSearchInput').addEventListener('input', e => {
-    currentSearch = e.target.value;
-    renderChips();
-  });
-
   document.getElementById('saveMenuBtn').onclick = async () => {
     const name = document.getElementById('newMenuName').value.trim();
     if(!name){ alert('Please enter a menu item name.'); return; }
-    await api('/api/menu-items', {method:'POST', body: JSON.stringify({name, ingredientIds:[...selectedIngIds]})});
+    await api('/api/menu-items', {method:'POST', body: JSON.stringify({
+      name, ingredientIds:[...selectedIngIds], subRecipeIds:[...selectedSrIds],
+    })});
     await loadMenu();
     renderMenuView();
   };
 
   const listEl = document.getElementById('menuList');
   if(menuCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>Menu Item</th><th>Allergens</th><th>Free Labels</th><th>Updated</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>Menu Item</th><th>Allergens</th><th>Free Labels</th><th>Diet</th><th>Updated</th><th></th></tr></thead><tbody>
       ${menuCache.map(m => `
         <tr>
           <td><b>${escapeHtml(m.name)}</b></td>
           <td>${allergenTagsHtml(m.allergens)}</td>
           <td>${dietBadgesHtml(m.dietFlags)}</td>
+          <td>${vegBadgesHtml(m.vegFlags)}</td>
           <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(m.updated_by_name||'')}<br>${formatDate(m.updated_at)}</td>
           <td><button class="danger" data-del-menu="${m.id}">Delete</button></td>
         </tr>`).join('')}
@@ -567,7 +681,7 @@ function renderStaffLinkView(){
   el.innerHTML = `
     <div class="panel">
       <h2 style="font-size:17px;">Staff / Front-of-house lookup screen</h2>
-      <p style="font-size:13.5px;color:var(--ink-soft);">Bookmark this link on a tablet or POS. No login needed — search menu items and see allergens at a glance.</p>
+      <p style="font-size:13.5px;color:var(--ink-soft);">Bookmark this link on a tablet or POS. No login needed — search menu items, filter by diet, and see allergens at a glance.</p>
       <div class="staff-link-box">
         <code>${url}</code><br><br>
         <button class="ghost" id="copyLinkBtn">Copy Link</button>
@@ -632,7 +746,7 @@ async function loadAudit(){
   const d = await api('/api/audit-log');
   const el = document.getElementById('view-audit');
   const actionLabel = {created:'Created', updated:'Updated', deleted:'Deleted'};
-  const typeLabel = {ingredient:'Ingredient', menu_item:'Menu Item', admin_account:'Admin Account'};
+  const typeLabel = {ingredient:'Ingredient', menu_item:'Menu Item', admin_account:'Admin Account', sub_recipe:'Sub-Recipe'};
   el.innerHTML = `
     <div class="panel">
       <h2 style="font-size:17px;margin-bottom:12px;">Change Log</h2>
