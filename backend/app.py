@@ -1,17 +1,14 @@
 import os
-import sqlite3
-import base64
 import json
 import secrets
-import string
 from datetime import datetime, timezone
 from functools import wraps
 
 import requests
 from flask import Flask, request, jsonify, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
+from upstash_redis import Redis
 
-DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "allergy.db"))
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
@@ -21,6 +18,8 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") == "production",
 )
+
+redis = Redis.from_env()  # UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN 환경변수 사용
 
 # ---- NZ / AU Food Standards Code (Standard 1.2.3, PEAL) allergen list ----
 ALLERGENS = [
@@ -34,111 +33,76 @@ ALLERGENS = [
 
 
 # ------------------------------------------------------------------
-# DB setup
+# Redis-backed storage helpers
 # ------------------------------------------------------------------
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+def _raw_get(key, default):
+    val = redis.get(key)
+    if val is None:
+        return default
+    return json.loads(val)
 
 
-def init_db():
-    conn = get_db()
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS companies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            slug TEXT UNIQUE NOT NULL,
-            staff_code TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
+def _raw_set(key, value):
+    redis.set(key, json.dumps(value))
 
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id INTEGER NOT NULL REFERENCES companies(id),
-            name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL CHECK (role IN ('owner','admin')),
-            created_at TEXT NOT NULL,
-            UNIQUE(company_id, email)
-        );
 
-        CREATE TABLE IF NOT EXISTS suppliers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id INTEGER NOT NULL REFERENCES companies(id),
-            name TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            UNIQUE(company_id, name)
-        );
+def _raw_delete(key):
+    redis.delete(key)
 
-        CREATE TABLE IF NOT EXISTS ingredients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id INTEGER NOT NULL REFERENCES companies(id),
-            name TEXT NOT NULL,
-            raw_text TEXT,
-            allergens_json TEXT NOT NULL DEFAULT '[]',
-            overall_confidence TEXT,
-            notes TEXT,
-            supplier_id INTEGER REFERENCES suppliers(id),
-            product_code TEXT,
-            price REAL,
-            created_by_id INTEGER REFERENCES users(id),
-            created_by_name TEXT,
-            updated_by_id INTEGER REFERENCES users(id),
-            updated_by_name TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
 
-        CREATE TABLE IF NOT EXISTS menu_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id INTEGER NOT NULL REFERENCES companies(id),
-            name TEXT NOT NULL,
-            ingredient_ids_json TEXT NOT NULL DEFAULT '[]',
-            created_by_id INTEGER REFERENCES users(id),
-            created_by_name TEXT,
-            updated_by_id INTEGER REFERENCES users(id),
-            updated_by_name TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id INTEGER NOT NULL REFERENCES companies(id),
-            user_id INTEGER,
-            user_name TEXT NOT NULL,
-            action TEXT NOT NULL,
-            target_type TEXT NOT NULL,
-            target_name TEXT NOT NULL,
-            detail TEXT,
-            created_at TEXT NOT NULL
-        );
-        """
-    )
-    # Migration: add columns that may be missing on an already-deployed DB
-    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(ingredients)").fetchall()}
-    for col_def in ("supplier_id INTEGER REFERENCES suppliers(id)", "product_code TEXT", "price REAL"):
-        col_name = col_def.split()[0]
-        if col_name not in existing_cols:
-            conn.execute(f"ALTER TABLE ingredients ADD COLUMN {col_def}")
-    conn.commit()
-    conn.close()
+def new_id():
+    return secrets.token_hex(6)
 
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def log_action(conn, company_id, user, action, target_type, target_name, detail=""):
-    conn.execute(
-        "INSERT INTO audit_log (company_id, user_id, user_name, action, target_type, target_name, detail, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (company_id, user["id"], user["name"], action, target_type, target_name, detail, now_iso()),
-    )
+def load_auth():
+    return _raw_get("allergy_auth", {"companies": {}, "users": {}, "slug_index": {}})
+
+
+def save_auth(auth):
+    _raw_set("allergy_auth", auth)
+
+
+def list_supplier_ids(company_id):
+    return _raw_get(f"allergy_supplier_ids:{company_id}", [])
+
+
+def load_supplier(supplier_id):
+    return _raw_get(f"allergy_supplier:{supplier_id}", None)
+
+
+def list_ingredient_ids(company_id):
+    return _raw_get(f"allergy_ingredient_ids:{company_id}", [])
+
+
+def load_ingredient(ing_id):
+    return _raw_get(f"allergy_ingredient:{ing_id}", None)
+
+
+def list_menu_ids(company_id):
+    return _raw_get(f"allergy_menu_ids:{company_id}", [])
+
+
+def load_menu(menu_id):
+    return _raw_get(f"allergy_menu:{menu_id}", None)
+
+
+def load_audit(company_id):
+    return _raw_get(f"allergy_audit:{company_id}", [])
+
+
+def log_action(company_id, user, action, target_type, target_name, detail=""):
+    log = load_audit(company_id)
+    log.append({
+        "id": new_id(), "user_id": user["id"], "user_name": user["name"],
+        "action": action, "target_type": target_type, "target_name": target_name,
+        "detail": detail, "created_at": now_iso(),
+    })
+    log = log[-200:]  # 최근 200건만 유지
+    _raw_set(f"allergy_audit:{company_id}", log)
 
 
 def make_slug(name):
@@ -149,7 +113,7 @@ def make_slug(name):
 
 
 def make_staff_code(length=6):
-    alphabet = string.ascii_uppercase + string.digits
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
@@ -160,10 +124,8 @@ def current_user():
     uid = session.get("user_id")
     if not uid:
         return None
-    conn = get_db()
-    row = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    auth = load_auth()
+    return auth["users"].get(uid)
 
 
 def login_required(role=None):
@@ -194,33 +156,33 @@ def signup():
     if not company_name or not name or not email or len(password) < 8:
         return jsonify({"error": "모든 항목을 입력하고, 비밀번호는 8자 이상이어야 합니다."}), 400
 
-    conn = get_db()
+    auth = load_auth()
+
     slug = make_slug(company_name)
-    suffix = 1
     original_slug = slug
-    while conn.execute("SELECT id FROM companies WHERE slug = ?", (slug,)).fetchone():
+    suffix = 1
+    while slug in auth["slug_index"]:
         suffix += 1
         slug = f"{original_slug}-{suffix}"
 
+    for u in auth["users"].values():
+        if u["email"] == email:
+            return jsonify({"error": "이미 사용 중인 이메일입니다."}), 400
+
+    company_id = new_id()
     staff_code = make_staff_code()
-    cur = conn.execute(
-        "INSERT INTO companies (name, slug, staff_code, created_at) VALUES (?,?,?,?)",
-        (company_name, slug, staff_code, now_iso()),
-    )
-    company_id = cur.lastrowid
+    auth["companies"][company_id] = {
+        "id": company_id, "name": company_name, "slug": slug,
+        "staff_code": staff_code, "created_at": now_iso(),
+    }
+    auth["slug_index"][slug] = company_id
 
-    try:
-        cur2 = conn.execute(
-            "INSERT INTO users (company_id, name, email, password_hash, role, created_at) VALUES (?,?,?,?,?,?)",
-            (company_id, name, email, generate_password_hash(password), "owner", now_iso()),
-        )
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({"error": "이미 사용 중인 이메일입니다."}), 400
-
-    user_id = cur2.lastrowid
-    conn.commit()
-    conn.close()
+    user_id = new_id()
+    auth["users"][user_id] = {
+        "id": user_id, "company_id": company_id, "name": name, "email": email,
+        "password_hash": generate_password_hash(password), "role": "owner", "created_at": now_iso(),
+    }
+    save_auth(auth)
 
     session["user_id"] = user_id
     return jsonify({"ok": True, "companySlug": slug, "staffCode": staff_code})
@@ -233,17 +195,15 @@ def login():
     password = data.get("password") or ""
     company_slug = (data.get("companySlug") or "").strip().lower()
 
-    conn = get_db()
-    company = conn.execute("SELECT * FROM companies WHERE slug = ?", (company_slug,)).fetchone()
-    if not company:
-        conn.close()
+    auth = load_auth()
+    company_id = auth["slug_index"].get(company_slug)
+    if not company_id:
         return jsonify({"error": "회사를 찾을 수 없습니다."}), 400
 
-    user = conn.execute(
-        "SELECT * FROM users WHERE company_id = ? AND email = ?", (company["id"], email)
-    ).fetchone()
-    conn.close()
-
+    user = next(
+        (u for u in auth["users"].values() if u["company_id"] == company_id and u["email"] == email),
+        None,
+    )
     if not user or not check_password_hash(user["password_hash"], password):
         return jsonify({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
 
@@ -262,9 +222,8 @@ def me():
     user = current_user()
     if not user:
         return jsonify({"user": None})
-    conn = get_db()
-    company = conn.execute("SELECT * FROM companies WHERE id = ?", (user["company_id"],)).fetchone()
-    conn.close()
+    auth = load_auth()
+    company = auth["companies"].get(user["company_id"])
     return jsonify({
         "user": {"id": user["id"], "name": user["name"], "email": user["email"], "role": user["role"]},
         "company": {"name": company["name"], "slug": company["slug"], "staffCode": company["staff_code"]},
@@ -277,13 +236,11 @@ def me():
 @app.route("/api/admins", methods=["GET"])
 @login_required()
 def list_admins(user):
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT id, name, email, role, created_at FROM users WHERE company_id = ? ORDER BY created_at",
-        (user["company_id"],),
-    ).fetchall()
-    conn.close()
-    return jsonify({"users": [dict(r) for r in rows]})
+    auth = load_auth()
+    users = [u for u in auth["users"].values() if u["company_id"] == user["company_id"]]
+    users.sort(key=lambda u: u["created_at"])
+    return jsonify({"users": [{"id": u["id"], "name": u["name"], "email": u["email"],
+                                "role": u["role"], "created_at": u["created_at"]} for u in users]})
 
 
 @app.route("/api/admins", methods=["POST"])
@@ -297,38 +254,32 @@ def create_admin(user):
     if not name or not email or len(password) < 8:
         return jsonify({"error": "이름/이메일을 입력하고, 비밀번호는 8자 이상이어야 합니다."}), 400
 
-    conn = get_db()
-    try:
-        conn.execute(
-            "INSERT INTO users (company_id, name, email, password_hash, role, created_at) VALUES (?,?,?,?,?,?)",
-            (user["company_id"], name, email, generate_password_hash(password), "admin", now_iso()),
-        )
-        log_action(conn, user["company_id"], user, "created", "admin_account", email)
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
+    auth = load_auth()
+    if any(u["email"] == email for u in auth["users"].values()):
         return jsonify({"error": "이미 사용 중인 이메일입니다."}), 400
-    conn.close()
+
+    admin_id = new_id()
+    auth["users"][admin_id] = {
+        "id": admin_id, "company_id": user["company_id"], "name": name, "email": email,
+        "password_hash": generate_password_hash(password), "role": "admin", "created_at": now_iso(),
+    }
+    save_auth(auth)
+    log_action(user["company_id"], user, "created", "admin_account", email)
     return jsonify({"ok": True})
 
 
-@app.route("/api/admins/<int:admin_id>", methods=["DELETE"])
+@app.route("/api/admins/<admin_id>", methods=["DELETE"])
 @login_required(role="owner")
 def delete_admin(user, admin_id):
-    conn = get_db()
-    target = conn.execute(
-        "SELECT * FROM users WHERE id = ? AND company_id = ?", (admin_id, user["company_id"])
-    ).fetchone()
-    if not target:
-        conn.close()
+    auth = load_auth()
+    target = auth["users"].get(admin_id)
+    if not target or target["company_id"] != user["company_id"]:
         return jsonify({"error": "찾을 수 없습니다."}), 404
     if target["role"] == "owner":
-        conn.close()
         return jsonify({"error": "오너 계정은 삭제할 수 없습니다."}), 400
-    conn.execute("DELETE FROM users WHERE id = ?", (admin_id,))
-    log_action(conn, user["company_id"], user, "deleted", "admin_account", target["email"])
-    conn.commit()
-    conn.close()
+    del auth["users"][admin_id]
+    save_auth(auth)
+    log_action(user["company_id"], user, "deleted", "admin_account", target["email"])
     return jsonify({"ok": True})
 
 
@@ -385,7 +336,6 @@ def analyze_ingredient(user):
             timeout=60,
         )
         if resp.status_code != 200:
-            # Anthropic이 실제로 뭐라고 거부했는지 그대로 보여줌 (디버깅용)
             return jsonify({"error": f"AI 분석 중 오류 ({resp.status_code}): {resp.text[:500]}"}), 502
         content = resp.json()["content"]
         text_block = next(b["text"] for b in content if b["type"] == "text")
@@ -403,12 +353,11 @@ def analyze_ingredient(user):
 @app.route("/api/suppliers", methods=["GET"])
 @login_required()
 def list_suppliers(user):
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM suppliers WHERE company_id = ? ORDER BY name", (user["company_id"],)
-    ).fetchall()
-    conn.close()
-    return jsonify({"suppliers": [dict(r) for r in rows]})
+    ids = list_supplier_ids(user["company_id"])
+    suppliers = [load_supplier(i) for i in ids]
+    suppliers = [s for s in suppliers if s]
+    suppliers.sort(key=lambda s: s["name"])
+    return jsonify({"suppliers": suppliers})
 
 
 @app.route("/api/suppliers", methods=["POST"])
@@ -418,46 +367,48 @@ def create_supplier(user):
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "공급업체 이름을 입력해주세요."}), 400
-    conn = get_db()
-    existing = conn.execute(
-        "SELECT * FROM suppliers WHERE company_id = ? AND name = ?", (user["company_id"], name)
-    ).fetchone()
-    if existing:
-        conn.close()
-        return jsonify({"supplier": dict(existing)})
-    cur = conn.execute(
-        "INSERT INTO suppliers (company_id, name, created_at) VALUES (?,?,?)",
-        (user["company_id"], name, now_iso()),
-    )
-    conn.commit()
-    supplier = {"id": cur.lastrowid, "company_id": user["company_id"], "name": name}
-    conn.close()
+
+    ids = list_supplier_ids(user["company_id"])
+    for i in ids:
+        existing = load_supplier(i)
+        if existing and existing["name"] == name:
+            return jsonify({"supplier": existing})
+
+    supplier_id = new_id()
+    supplier = {"id": supplier_id, "company_id": user["company_id"], "name": name, "created_at": now_iso()}
+    _raw_set(f"allergy_supplier:{supplier_id}", supplier)
+    ids.append(supplier_id)
+    _raw_set(f"allergy_supplier_ids:{user['company_id']}", ids)
     return jsonify({"supplier": supplier})
 
 
 # ------------------------------------------------------------------
 # Ingredients CRUD (admin/owner)
 # ------------------------------------------------------------------
-INGREDIENT_SELECT = """
-    SELECT i.*, s.name AS supplier_name
-    FROM ingredients i
-    LEFT JOIN suppliers s ON s.id = i.supplier_id
-    WHERE i.company_id = ?
-"""
+def _ingredient_public(ing):
+    d = dict(ing)
+    d["has_photo"] = bool(d.get("photo_base64"))
+    d.pop("photo_base64", None)  # 목록 조회에는 사진 원본을 안 실어서 응답을 가볍게 유지
+    return d
 
 
 @app.route("/api/ingredients", methods=["GET"])
 @login_required()
 def list_ingredients(user):
-    conn = get_db()
-    rows = conn.execute(INGREDIENT_SELECT + " ORDER BY i.name", (user["company_id"],)).fetchall()
-    conn.close()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["allergens"] = json.loads(d.pop("allergens_json"))
-        out.append(d)
-    return jsonify({"ingredients": out})
+    ids = list_ingredient_ids(user["company_id"])
+    ingredients = [load_ingredient(i) for i in ids]
+    ingredients = [i for i in ingredients if i]
+    ingredients.sort(key=lambda i: i["name"])
+    return jsonify({"ingredients": [_ingredient_public(i) for i in ingredients]})
+
+
+@app.route("/api/ingredients/<ing_id>/photo", methods=["GET"])
+@login_required()
+def get_ingredient_photo(user, ing_id):
+    ing = load_ingredient(ing_id)
+    if not ing or ing["company_id"] != user["company_id"]:
+        return jsonify({"error": "찾을 수 없습니다."}), 404
+    return jsonify({"photoBase64": ing.get("photo_base64")})
 
 
 @app.route("/api/ingredients/lookup", methods=["GET"])
@@ -466,16 +417,12 @@ def lookup_ingredient_by_code(user):
     code = (request.args.get("code") or "").strip()
     if not code:
         return jsonify({"ingredient": None})
-    conn = get_db()
-    row = conn.execute(
-        INGREDIENT_SELECT + " AND i.product_code = ?", (user["company_id"], code)
-    ).fetchone()
-    conn.close()
-    if not row:
-        return jsonify({"ingredient": None})
-    d = dict(row)
-    d["allergens"] = json.loads(d.pop("allergens_json"))
-    return jsonify({"ingredient": d})
+    ids = list_ingredient_ids(user["company_id"])
+    for i in ids:
+        ing = load_ingredient(i)
+        if ing and ing.get("product_code") == code:
+            return jsonify({"ingredient": _ingredient_public(ing)})
+    return jsonify({"ingredient": None})
 
 
 @app.route("/api/ingredients", methods=["POST"])
@@ -486,109 +433,107 @@ def create_ingredient(user):
     if not name:
         return jsonify({"error": "재료 이름을 입력해주세요."}), 400
 
-    allergens = data.get("allergens", [])
-    supplier_id = data.get("supplierId")
     product_code = (data.get("productCode") or "").strip() or None
-    price = data.get("price")
-
-    conn = get_db()
     if product_code:
-        dup = conn.execute(
-            "SELECT id FROM ingredients WHERE company_id = ? AND product_code = ?",
-            (user["company_id"], product_code),
-        ).fetchone()
-        if dup:
-            conn.close()
-            return jsonify({"error": f"제품코드 '{product_code}'는 이미 등록되어 있습니다."}), 400
+        for i in list_ingredient_ids(user["company_id"]):
+            existing = load_ingredient(i)
+            if existing and existing.get("product_code") == product_code:
+                return jsonify({"error": f"제품코드 '{product_code}'는 이미 등록되어 있습니다."}), 400
 
-    conn.execute(
-        "INSERT INTO ingredients (company_id, name, raw_text, allergens_json, overall_confidence, notes, "
-        "supplier_id, product_code, price, "
-        "created_by_id, created_by_name, updated_by_id, updated_by_name, created_at, updated_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (user["company_id"], name, data.get("rawText", ""), json.dumps(allergens),
-         data.get("overallConfidence", ""), data.get("notes", ""),
-         supplier_id, product_code, price,
-         user["id"], user["name"], user["id"], user["name"], now_iso(), now_iso()),
-    )
-    log_action(conn, user["company_id"], user, "created", "ingredient", name)
-    conn.commit()
-    conn.close()
+    ing_id = new_id()
+    ingredient = {
+        "id": ing_id, "company_id": user["company_id"], "name": name,
+        "raw_text": data.get("rawText", ""),
+        "allergens": data.get("allergens", []),
+        "overall_confidence": data.get("overallConfidence", ""),
+        "notes": data.get("notes", ""),
+        "supplier_id": data.get("supplierId"),
+        "supplier_name": None,
+        "product_code": product_code,
+        "price": data.get("price"),
+        "photo_base64": data.get("photoBase64"),
+        "created_by_id": user["id"], "created_by_name": user["name"],
+        "updated_by_id": user["id"], "updated_by_name": user["name"],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    if ingredient["supplier_id"]:
+        sup = load_supplier(ingredient["supplier_id"])
+        ingredient["supplier_name"] = sup["name"] if sup else None
+
+    _raw_set(f"allergy_ingredient:{ing_id}", ingredient)
+    ids = list_ingredient_ids(user["company_id"])
+    ids.append(ing_id)
+    _raw_set(f"allergy_ingredient_ids:{user['company_id']}", ids)
+    log_action(user["company_id"], user, "created", "ingredient", name)
     return jsonify({"ok": True})
 
 
-@app.route("/api/ingredients/<int:ing_id>", methods=["PUT"])
+@app.route("/api/ingredients/<ing_id>", methods=["PUT"])
 @login_required()
 def update_ingredient(user, ing_id):
-    conn = get_db()
-    existing = conn.execute(
-        "SELECT * FROM ingredients WHERE id = ? AND company_id = ?", (ing_id, user["company_id"])
-    ).fetchone()
-    if not existing:
-        conn.close()
+    existing = load_ingredient(ing_id)
+    if not existing or existing["company_id"] != user["company_id"]:
         return jsonify({"error": "찾을 수 없습니다."}), 404
 
     data = request.get_json(force=True)
     name = (data.get("name") or existing["name"]).strip()
-    allergens = data.get("allergens", json.loads(existing["allergens_json"]))
-    supplier_id = data.get("supplierId", existing["supplier_id"])
-    product_code = data.get("productCode", existing["product_code"])
-    price = data.get("price", existing["price"])
-
+    product_code = data.get("productCode", existing.get("product_code"))
     if product_code:
-        dup = conn.execute(
-            "SELECT id FROM ingredients WHERE company_id = ? AND product_code = ? AND id != ?",
-            (user["company_id"], product_code, ing_id),
-        ).fetchone()
-        if dup:
-            conn.close()
-            return jsonify({"error": f"제품코드 '{product_code}'는 이미 다른 재료에 등록되어 있습니다."}), 400
+        for i in list_ingredient_ids(user["company_id"]):
+            if i == ing_id:
+                continue
+            other = load_ingredient(i)
+            if other and other.get("product_code") == product_code:
+                return jsonify({"error": f"제품코드 '{product_code}'는 이미 다른 재료에 등록되어 있습니다."}), 400
 
-    conn.execute(
-        "UPDATE ingredients SET name=?, raw_text=?, allergens_json=?, overall_confidence=?, notes=?, "
-        "supplier_id=?, product_code=?, price=?, "
-        "updated_by_id=?, updated_by_name=?, updated_at=? WHERE id=?",
-        (name, data.get("rawText", existing["raw_text"]), json.dumps(allergens),
-         data.get("overallConfidence", existing["overall_confidence"]), data.get("notes", existing["notes"]),
-         supplier_id, product_code, price,
-         user["id"], user["name"], now_iso(), ing_id),
-    )
-    log_action(conn, user["company_id"], user, "updated", "ingredient", name)
-    conn.commit()
-    conn.close()
+    existing.update({
+        "name": name,
+        "raw_text": data.get("rawText", existing.get("raw_text")),
+        "allergens": data.get("allergens", existing.get("allergens", [])),
+        "overall_confidence": data.get("overallConfidence", existing.get("overall_confidence")),
+        "notes": data.get("notes", existing.get("notes")),
+        "supplier_id": data.get("supplierId", existing.get("supplier_id")),
+        "product_code": product_code,
+        "price": data.get("price", existing.get("price")),
+        "updated_by_id": user["id"], "updated_by_name": user["name"],
+        "updated_at": now_iso(),
+    })
+    if data.get("photoBase64"):
+        existing["photo_base64"] = data.get("photoBase64")
+    if existing.get("supplier_id"):
+        sup = load_supplier(existing["supplier_id"])
+        existing["supplier_name"] = sup["name"] if sup else None
+    else:
+        existing["supplier_name"] = None
+
+    _raw_set(f"allergy_ingredient:{ing_id}", existing)
+    log_action(user["company_id"], user, "updated", "ingredient", name)
     return jsonify({"ok": True})
 
 
-@app.route("/api/ingredients/<int:ing_id>", methods=["DELETE"])
+@app.route("/api/ingredients/<ing_id>", methods=["DELETE"])
 @login_required()
 def delete_ingredient(user, ing_id):
-    conn = get_db()
-    existing = conn.execute(
-        "SELECT * FROM ingredients WHERE id = ? AND company_id = ?", (ing_id, user["company_id"])
-    ).fetchone()
-    if not existing:
-        conn.close()
+    existing = load_ingredient(ing_id)
+    if not existing or existing["company_id"] != user["company_id"]:
         return jsonify({"error": "찾을 수 없습니다."}), 404
-    conn.execute("DELETE FROM ingredients WHERE id = ?", (ing_id,))
-    log_action(conn, user["company_id"], user, "deleted", "ingredient", existing["name"])
-    conn.commit()
-    conn.close()
+    _raw_delete(f"allergy_ingredient:{ing_id}")
+    ids = [i for i in list_ingredient_ids(user["company_id"]) if i != ing_id]
+    _raw_set(f"allergy_ingredient_ids:{user['company_id']}", ids)
+    log_action(user["company_id"], user, "deleted", "ingredient", existing["name"])
     return jsonify({"ok": True})
 
 
 # ------------------------------------------------------------------
 # Menu items CRUD (admin/owner) — allergens are computed from linked ingredients
 # ------------------------------------------------------------------
-def compute_menu_allergens(conn, ingredient_ids):
-    if not ingredient_ids:
-        return []
-    placeholders = ",".join("?" for _ in ingredient_ids)
-    rows = conn.execute(
-        f"SELECT allergens_json FROM ingredients WHERE id IN ({placeholders})", ingredient_ids
-    ).fetchall()
+def compute_menu_allergens(ingredient_ids):
     merged = {}
-    for r in rows:
-        for a in json.loads(r["allergens_json"]):
+    for i in ingredient_ids:
+        ing = load_ingredient(i)
+        if not ing:
+            continue
+        for a in ing.get("allergens", []):
             key = a["name"]
             if key not in merged or a.get("confidence") == "high":
                 merged[key] = a
@@ -598,18 +543,15 @@ def compute_menu_allergens(conn, ingredient_ids):
 @app.route("/api/menu-items", methods=["GET"])
 @login_required()
 def list_menu_items(user):
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM menu_items WHERE company_id = ? ORDER BY name", (user["company_id"],)
-    ).fetchall()
+    ids = list_menu_ids(user["company_id"])
+    items = [load_menu(i) for i in ids]
+    items = [m for m in items if m]
+    items.sort(key=lambda m: m["name"])
     out = []
-    for r in rows:
-        d = dict(r)
-        ing_ids = json.loads(d.pop("ingredient_ids_json"))
-        d["ingredientIds"] = ing_ids
-        d["allergens"] = compute_menu_allergens(conn, ing_ids)
+    for m in items:
+        d = dict(m)
+        d["allergens"] = compute_menu_allergens(m.get("ingredient_ids", []))
         out.append(d)
-    conn.close()
     return jsonify({"menuItems": out})
 
 
@@ -622,58 +564,51 @@ def create_menu_item(user):
     if not name:
         return jsonify({"error": "메뉴 이름을 입력해주세요."}), 400
 
-    conn = get_db()
-    conn.execute(
-        "INSERT INTO menu_items (company_id, name, ingredient_ids_json, created_by_id, created_by_name, "
-        "updated_by_id, updated_by_name, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-        (user["company_id"], name, json.dumps(ingredient_ids), user["id"], user["name"],
-         user["id"], user["name"], now_iso(), now_iso()),
-    )
-    log_action(conn, user["company_id"], user, "created", "menu_item", name)
-    conn.commit()
-    conn.close()
+    menu_id = new_id()
+    menu = {
+        "id": menu_id, "company_id": user["company_id"], "name": name,
+        "ingredient_ids": ingredient_ids,
+        "created_by_id": user["id"], "created_by_name": user["name"],
+        "updated_by_id": user["id"], "updated_by_name": user["name"],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    _raw_set(f"allergy_menu:{menu_id}", menu)
+    ids = list_menu_ids(user["company_id"])
+    ids.append(menu_id)
+    _raw_set(f"allergy_menu_ids:{user['company_id']}", ids)
+    log_action(user["company_id"], user, "created", "menu_item", name)
     return jsonify({"ok": True})
 
 
-@app.route("/api/menu-items/<int:item_id>", methods=["PUT"])
+@app.route("/api/menu-items/<item_id>", methods=["PUT"])
 @login_required()
 def update_menu_item(user, item_id):
-    conn = get_db()
-    existing = conn.execute(
-        "SELECT * FROM menu_items WHERE id = ? AND company_id = ?", (item_id, user["company_id"])
-    ).fetchone()
-    if not existing:
-        conn.close()
+    existing = load_menu(item_id)
+    if not existing or existing["company_id"] != user["company_id"]:
         return jsonify({"error": "찾을 수 없습니다."}), 404
 
     data = request.get_json(force=True)
-    name = (data.get("name") or existing["name"]).strip()
-    ingredient_ids = data.get("ingredientIds", json.loads(existing["ingredient_ids_json"]))
-
-    conn.execute(
-        "UPDATE menu_items SET name=?, ingredient_ids_json=?, updated_by_id=?, updated_by_name=?, updated_at=? WHERE id=?",
-        (name, json.dumps(ingredient_ids), user["id"], user["name"], now_iso(), item_id),
-    )
-    log_action(conn, user["company_id"], user, "updated", "menu_item", name)
-    conn.commit()
-    conn.close()
+    existing.update({
+        "name": (data.get("name") or existing["name"]).strip(),
+        "ingredient_ids": data.get("ingredientIds", existing.get("ingredient_ids", [])),
+        "updated_by_id": user["id"], "updated_by_name": user["name"],
+        "updated_at": now_iso(),
+    })
+    _raw_set(f"allergy_menu:{item_id}", existing)
+    log_action(user["company_id"], user, "updated", "menu_item", existing["name"])
     return jsonify({"ok": True})
 
 
-@app.route("/api/menu-items/<int:item_id>", methods=["DELETE"])
+@app.route("/api/menu-items/<item_id>", methods=["DELETE"])
 @login_required()
 def delete_menu_item(user, item_id):
-    conn = get_db()
-    existing = conn.execute(
-        "SELECT * FROM menu_items WHERE id = ? AND company_id = ?", (item_id, user["company_id"])
-    ).fetchone()
-    if not existing:
-        conn.close()
+    existing = load_menu(item_id)
+    if not existing or existing["company_id"] != user["company_id"]:
         return jsonify({"error": "찾을 수 없습니다."}), 404
-    conn.execute("DELETE FROM menu_items WHERE id = ?", (item_id,))
-    log_action(conn, user["company_id"], user, "deleted", "menu_item", existing["name"])
-    conn.commit()
-    conn.close()
+    _raw_delete(f"allergy_menu:{item_id}")
+    ids = [i for i in list_menu_ids(user["company_id"]) if i != item_id]
+    _raw_set(f"allergy_menu_ids:{user['company_id']}", ids)
+    log_action(user["company_id"], user, "deleted", "menu_item", existing["name"])
     return jsonify({"ok": True})
 
 
@@ -683,13 +618,8 @@ def delete_menu_item(user, item_id):
 @app.route("/api/audit-log", methods=["GET"])
 @login_required(role="owner")
 def audit_log(user):
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM audit_log WHERE company_id = ? ORDER BY created_at DESC LIMIT 200",
-        (user["company_id"],),
-    ).fetchall()
-    conn.close()
-    return jsonify({"log": [dict(r) for r in rows]})
+    log = load_audit(user["company_id"])
+    return jsonify({"log": list(reversed(log))})
 
 
 # ------------------------------------------------------------------
@@ -698,24 +628,18 @@ def audit_log(user):
 @app.route("/api/staff/<slug>/menu", methods=["GET"])
 def staff_menu(slug):
     code = request.args.get("code", "")
-    conn = get_db()
-    company = conn.execute("SELECT * FROM companies WHERE slug = ?", (slug,)).fetchone()
+    auth = load_auth()
+    company_id = auth["slug_index"].get(slug)
+    company = auth["companies"].get(company_id) if company_id else None
     if not company or company["staff_code"] != code:
-        conn.close()
         return jsonify({"error": "접근 코드가 올바르지 않습니다."}), 403
 
-    rows = conn.execute(
-        "SELECT * FROM menu_items WHERE company_id = ? ORDER BY name", (company["id"],)
-    ).fetchall()
-    out = []
-    for r in rows:
-        ing_ids = json.loads(r["ingredient_ids_json"])
-        out.append({
-            "id": r["id"],
-            "name": r["name"],
-            "allergens": compute_menu_allergens(conn, ing_ids),
-        })
-    conn.close()
+    ids = list_menu_ids(company_id)
+    items = [load_menu(i) for i in ids]
+    items = [m for m in items if m]
+    items.sort(key=lambda m: m["name"])
+    out = [{"id": m["id"], "name": m["name"], "allergens": compute_menu_allergens(m.get("ingredient_ids", []))}
+           for m in items]
     return jsonify({"companyName": company["name"], "menuItems": out})
 
 
@@ -736,8 +660,6 @@ def staff_page(slug):
 def static_files(path):
     return send_from_directory(FRONTEND_DIR, path)
 
-
-init_db()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
