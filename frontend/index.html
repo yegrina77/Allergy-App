@@ -463,7 +463,7 @@ function renderMenuView(){
   let selectedIngIds = new Set();
   el.querySelectorAll('#menuIngChips .chip').forEach(chip => {
     chip.onclick = () => {
-      const id = parseInt(chip.dataset.ing);
+      const id = chip.dataset.ing;
       if(selectedIngIds.has(id)){ selectedIngIds.delete(id); chip.classList.remove('on'); }
       else { selectedIngIds.add(id); chip.classList.add('on'); }
     };
