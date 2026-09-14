@@ -134,9 +134,9 @@ def login_required(role=None):
         def wrapper(*args, **kwargs):
             user = current_user()
             if not user:
-                return jsonify({"error": "로그인이 필요합니다."}), 401
+                return jsonify({"error": "Please log in."}), 401
             if role and user["role"] != role:
-                return jsonify({"error": "권한이 없습니다."}), 403
+                return jsonify({"error": "You do not have permission to do this."}), 403
             return fn(user, *args, **kwargs)
         return wrapper
     return decorator
@@ -154,7 +154,7 @@ def signup():
     password = data.get("password") or ""
 
     if not company_name or not name or not email or len(password) < 8:
-        return jsonify({"error": "모든 항목을 입력하고, 비밀번호는 8자 이상이어야 합니다."}), 400
+        return jsonify({"error": "Please fill in all fields. Password must be at least 8 characters."}), 400
 
     auth = load_auth()
 
@@ -167,7 +167,7 @@ def signup():
 
     for u in auth["users"].values():
         if u["email"] == email:
-            return jsonify({"error": "이미 사용 중인 이메일입니다."}), 400
+            return jsonify({"error": "This email is already in use."}), 400
 
     company_id = new_id()
     staff_code = make_staff_code()
@@ -198,14 +198,14 @@ def login():
     auth = load_auth()
     company_id = auth["slug_index"].get(company_slug)
     if not company_id:
-        return jsonify({"error": "회사를 찾을 수 없습니다."}), 400
+        return jsonify({"error": "Company not found."}), 400
 
     user = next(
         (u for u in auth["users"].values() if u["company_id"] == company_id and u["email"] == email),
         None,
     )
     if not user or not check_password_hash(user["password_hash"], password):
-        return jsonify({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+        return jsonify({"error": "Incorrect email or password."}), 401
 
     session["user_id"] = user["id"]
     return jsonify({"ok": True})
@@ -252,11 +252,11 @@ def create_admin(user):
     password = data.get("password") or ""
 
     if not name or not email or len(password) < 8:
-        return jsonify({"error": "이름/이메일을 입력하고, 비밀번호는 8자 이상이어야 합니다."}), 400
+        return jsonify({"error": "Please enter name and email. Password must be at least 8 characters."}), 400
 
     auth = load_auth()
     if any(u["email"] == email for u in auth["users"].values()):
-        return jsonify({"error": "이미 사용 중인 이메일입니다."}), 400
+        return jsonify({"error": "This email is already in use."}), 400
 
     admin_id = new_id()
     auth["users"][admin_id] = {
@@ -274,9 +274,9 @@ def delete_admin(user, admin_id):
     auth = load_auth()
     target = auth["users"].get(admin_id)
     if not target or target["company_id"] != user["company_id"]:
-        return jsonify({"error": "찾을 수 없습니다."}), 404
+        return jsonify({"error": "Not found."}), 404
     if target["role"] == "owner":
-        return jsonify({"error": "오너 계정은 삭제할 수 없습니다."}), 400
+        return jsonify({"error": "The owner account cannot be deleted."}), 400
     del auth["users"][admin_id]
     save_auth(auth)
     log_action(user["company_id"], user, "deleted", "admin_account", target["email"])
@@ -290,27 +290,27 @@ def delete_admin(user, admin_id):
 @login_required()
 def analyze_ingredient(user):
     if not ANTHROPIC_API_KEY:
-        return jsonify({"error": "서버에 ANTHROPIC_API_KEY가 설정되어 있지 않습니다."}), 500
+        return jsonify({"error": "ANTHROPIC_API_KEY is not configured on the server."}), 500
 
     data = request.get_json(force=True)
     image_b64 = data.get("imageBase64")
     if not image_b64:
-        return jsonify({"error": "이미지가 없습니다."}), 400
+        return jsonify({"error": "No image provided."}), 400
 
-    system_prompt = f"""당신은 뉴질랜드 레스토랑의 알러지 관리 시스템을 위해 식품 성분표 사진을 분석하는 어시스턴트입니다.
+    system_prompt = f"""You are an assistant analyzing food ingredient label photos for a New Zealand restaurant's allergen management system.
 
-작업:
-1. 사진에서 성분표(ingredient list) 텍스트를 최대한 정확히 그대로 읽어냅니다. 읽을 수 없는 부분은 억지로 추측하지 말고 생략합니다.
-2. 읽어낸 성분들 중, 아래 뉴질랜드/호주 식품기준코드(Standard 1.2.3, PEAL) 알러지원 목록에 해당하는 것이 있으면 표시합니다. 성분명이 목록 단어와 정확히 일치하지 않아도(예: whey, casein → Milk), 그 알러지원에서 유래된 성분이면 판단해서 태그하세요:
+Tasks:
+1. Read the ingredient list text from the photo as accurately as possible, exactly as printed. If part of it is unreadable, omit it rather than guessing.
+2. Among the ingredients you read, flag any that match the allergens below, from the New Zealand/Australia Food Standards Code (Standard 1.2.3, PEAL). Even if the wording doesn't exactly match the list (e.g. whey, casein -> Milk), flag it if it is derived from that allergen:
 {", ".join(ALLERGENS)}
-3. 사진이 흐릿하거나 일부만 보여서 확신이 낮으면 반드시 confidence를 "low"로 표시하세요. 절대 사진에 없는 내용을 지어내지 마세요.
+3. If the photo is blurry or only partially visible and you are not confident, set confidence to "low". Never invent content that is not in the photo.
 
-반드시 아래 JSON 형식으로만 답하세요. 마크다운, 설명, 코드블록 없이 순수 JSON만 출력합니다:
+Respond ONLY in the following JSON format. No markdown, no explanation, no code block — pure JSON only:
 {{
-  "raw_text": "사진에서 읽은 성분표 원문",
-  "allergens": [{{"name": "목록에 있는 정확한 영문명", "confidence": "high|medium|low", "source_ingredient": "이 알러지원을 유발한 원문 성분 표현"}}],
+  "raw_text": "the ingredient list exactly as read from the photo",
+  "allergens": [{{"name": "exact English name from the list above", "confidence": "high|medium|low", "source_ingredient": "the original ingredient text that triggered this allergen"}}],
   "overall_confidence": "high|medium|low",
-  "notes": "사진 품질이나 판독상 특이사항 (없으면 빈 문자열)"
+  "notes": "any notes on photo quality or reading difficulty, in English (empty string if none)"
 }}"""
 
     try:
@@ -329,20 +329,20 @@ def analyze_ingredient(user):
                     "role": "user",
                     "content": [
                         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}},
-                        {"type": "text", "text": "이 성분표 사진을 분석해서 지정된 JSON 형식으로만 답해주세요."},
+                        {"type": "text", "text": "Analyze this ingredient label photo and respond only in the specified JSON format."},
                     ],
                 }],
             },
             timeout=60,
         )
         if resp.status_code != 200:
-            return jsonify({"error": f"AI 분석 중 오류 ({resp.status_code}): {resp.text[:500]}"}), 502
+            return jsonify({"error": f"AI analysis error ({resp.status_code}): {resp.text[:500]}"}), 502
         content = resp.json()["content"]
         text_block = next(b["text"] for b in content if b["type"] == "text")
         clean = text_block.replace("```json", "").replace("```", "").strip()
         parsed = json.loads(clean)
     except Exception as e:
-        return jsonify({"error": f"AI 분석 중 오류: {e}"}), 502
+        return jsonify({"error": f"AI analysis error: {e}"}), 502
 
     return jsonify(parsed)
 
@@ -366,7 +366,7 @@ def create_supplier(user):
     data = request.get_json(force=True)
     name = (data.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "공급업체 이름을 입력해주세요."}), 400
+        return jsonify({"error": "Please enter a supplier name."}), 400
 
     ids = list_supplier_ids(user["company_id"])
     for i in ids:
@@ -407,7 +407,7 @@ def list_ingredients(user):
 def get_ingredient_photo(user, ing_id):
     ing = load_ingredient(ing_id)
     if not ing or ing["company_id"] != user["company_id"]:
-        return jsonify({"error": "찾을 수 없습니다."}), 404
+        return jsonify({"error": "Not found."}), 404
     return jsonify({"photoBase64": ing.get("photo_base64")})
 
 
@@ -431,14 +431,14 @@ def create_ingredient(user):
     data = request.get_json(force=True)
     name = (data.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "재료 이름을 입력해주세요."}), 400
+        return jsonify({"error": "Please enter an ingredient name."}), 400
 
     product_code = (data.get("productCode") or "").strip() or None
     if product_code:
         for i in list_ingredient_ids(user["company_id"]):
             existing = load_ingredient(i)
             if existing and existing.get("product_code") == product_code:
-                return jsonify({"error": f"제품코드 '{product_code}'는 이미 등록되어 있습니다."}), 400
+                return jsonify({"error": f"Product code '{product_code}' is already registered."}), 400
 
     ing_id = new_id()
     ingredient = {
@@ -473,7 +473,7 @@ def create_ingredient(user):
 def update_ingredient(user, ing_id):
     existing = load_ingredient(ing_id)
     if not existing or existing["company_id"] != user["company_id"]:
-        return jsonify({"error": "찾을 수 없습니다."}), 404
+        return jsonify({"error": "Not found."}), 404
 
     data = request.get_json(force=True)
     name = (data.get("name") or existing["name"]).strip()
@@ -484,7 +484,7 @@ def update_ingredient(user, ing_id):
                 continue
             other = load_ingredient(i)
             if other and other.get("product_code") == product_code:
-                return jsonify({"error": f"제품코드 '{product_code}'는 이미 다른 재료에 등록되어 있습니다."}), 400
+                return jsonify({"error": f"Product code '{product_code}' is already registered to another ingredient."}), 400
 
     existing.update({
         "name": name,
@@ -516,7 +516,7 @@ def update_ingredient(user, ing_id):
 def delete_ingredient(user, ing_id):
     existing = load_ingredient(ing_id)
     if not existing or existing["company_id"] != user["company_id"]:
-        return jsonify({"error": "찾을 수 없습니다."}), 404
+        return jsonify({"error": "Not found."}), 404
     _raw_delete(f"allergy_ingredient:{ing_id}")
     ids = [i for i in list_ingredient_ids(user["company_id"]) if i != ing_id]
     _raw_set(f"allergy_ingredient_ids:{user['company_id']}", ids)
@@ -592,7 +592,7 @@ def create_menu_item(user):
     name = (data.get("name") or "").strip()
     ingredient_ids = data.get("ingredientIds", [])
     if not name:
-        return jsonify({"error": "메뉴 이름을 입력해주세요."}), 400
+        return jsonify({"error": "Please enter a menu name."}), 400
 
     menu_id = new_id()
     menu = {
@@ -615,7 +615,7 @@ def create_menu_item(user):
 def update_menu_item(user, item_id):
     existing = load_menu(item_id)
     if not existing or existing["company_id"] != user["company_id"]:
-        return jsonify({"error": "찾을 수 없습니다."}), 404
+        return jsonify({"error": "Not found."}), 404
 
     data = request.get_json(force=True)
     existing.update({
@@ -634,7 +634,7 @@ def update_menu_item(user, item_id):
 def delete_menu_item(user, item_id):
     existing = load_menu(item_id)
     if not existing or existing["company_id"] != user["company_id"]:
-        return jsonify({"error": "찾을 수 없습니다."}), 404
+        return jsonify({"error": "Not found."}), 404
     _raw_delete(f"allergy_menu:{item_id}")
     ids = [i for i in list_menu_ids(user["company_id"]) if i != item_id]
     _raw_set(f"allergy_menu_ids:{user['company_id']}", ids)
@@ -662,7 +662,7 @@ def staff_menu(slug):
     company_id = auth["slug_index"].get(slug)
     company = auth["companies"].get(company_id) if company_id else None
     if not company or company["staff_code"] != code:
-        return jsonify({"error": "접근 코드가 올바르지 않습니다."}), 403
+        return jsonify({"error": "Invalid access code."}), 403
 
     ids = list_menu_ids(company_id)
     items = [load_menu(i) for i in ids]
