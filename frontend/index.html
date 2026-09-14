@@ -372,6 +372,53 @@ async function loadIngredients(){
   ingredientsCache = d.ingredients;
 }
 
+function renderIngredientTable(query){
+  const listEl = document.getElementById('ingredientList');
+  if(!listEl) return;
+  const q = (query||'').trim().toLowerCase();
+  const filtered = ingredientsCache.filter(ing =>
+    !q || ing.name.toLowerCase().includes(q) || (ing.supplier_name||'').toLowerCase().includes(q)
+  );
+  if(!ingredientsCache.length){ listEl.innerHTML = '<div class="empty">No ingredients registered yet.</div>'; return; }
+  if(!filtered.length){ listEl.innerHTML = '<div class="empty">No matching ingredients.</div>'; return; }
+
+  listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Allergens</th><th>Diet</th><th>Verified</th><th></th></tr></thead><tbody>
+    ${filtered.map(ing => `
+      <tr>
+        <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
+        <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
+        <td>${allergenTagsHtml(ing.allergens)}</td>
+        <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
+        <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at)}</td>
+        <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">Re-verify</button> <button class="danger" data-del-ing="${ing.id}">Delete</button></td>
+      </tr>`).join('')}
+  </tbody></table>`;
+
+  listEl.querySelectorAll('[data-reverify]').forEach(btn=>{
+    btn.onclick = () => {
+      reverifyTarget = ingredientsCache.find(i => i.id === btn.dataset.reverify) || null;
+      renderIngredientsView();
+      window.scrollTo({top:0, behavior:'smooth'});
+    };
+  });
+  listEl.querySelectorAll('[data-del-ing]').forEach(btn=>{
+    btn.onclick = async () => {
+      if(!confirm('Delete this ingredient?')) return;
+      await api('/api/ingredients/'+btn.dataset.delIng, {method:'DELETE'});
+      await loadIngredients(); renderIngredientsView();
+    };
+  });
+  listEl.querySelectorAll('[data-view-photo]').forEach(btn=>{
+    btn.onclick = async () => {
+      const res = await api('/api/ingredients/' + btn.dataset.viewPhoto + '/photo');
+      if(res.photoBase64){
+        const win = window.open('');
+        win.document.write(`<img src="data:image/jpeg;base64,${res.photoBase64}" style="max-width:100%;">`);
+      }
+    };
+  });
+}
+
 function renderIngredientsView(){
   const el = document.getElementById('view-ingredients');
   el.innerHTML = `
@@ -388,47 +435,13 @@ function renderIngredientsView(){
       </div>
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">Registered Ingredients (${ingredientsCache.length})</h2>
-        <div id="ingredientList">${ingredientsCache.length ? '' : '<div class="empty">No ingredients registered yet.</div>'}</div>
+        <input id="ingListSearch" placeholder="Search by ingredient or supplier name...">
+        <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : '<div class="empty">No ingredients registered yet.</div>'}</div>
       </div>
     </div>
   `;
-  const listEl = document.getElementById('ingredientList');
-  if(ingredientsCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Allergens</th><th>Diet</th><th>Verified</th><th></th></tr></thead><tbody>
-      ${ingredientsCache.map(ing => `
-        <tr>
-          <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
-          <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
-          <td>${allergenTagsHtml(ing.allergens)}</td>
-          <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
-          <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at)}</td>
-          <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">Re-verify</button> <button class="danger" data-del-ing="${ing.id}">Delete</button></td>
-        </tr>`).join('')}
-    </tbody></table>`;
-    listEl.querySelectorAll('[data-reverify]').forEach(btn=>{
-      btn.onclick = () => {
-        reverifyTarget = ingredientsCache.find(i => i.id === btn.dataset.reverify) || null;
-        renderIngredientsView();
-        window.scrollTo({top:0, behavior:'smooth'});
-      };
-    });
-    listEl.querySelectorAll('[data-del-ing]').forEach(btn=>{
-      btn.onclick = async () => {
-        if(!confirm('Delete this ingredient?')) return;
-        await api('/api/ingredients/'+btn.dataset.delIng, {method:'DELETE'});
-        await loadIngredients(); renderIngredientsView();
-      };
-    });
-    listEl.querySelectorAll('[data-view-photo]').forEach(btn=>{
-      btn.onclick = async () => {
-        const res = await api('/api/ingredients/' + btn.dataset.viewPhoto + '/photo');
-        if(res.photoBase64){
-          const win = window.open('');
-          win.document.write(`<img src="data:image/jpeg;base64,${res.photoBase64}" style="max-width:100%;">`);
-        }
-      };
-    });
-  }
+  renderIngredientTable('');
+  document.getElementById('ingListSearch').addEventListener('input', e => renderIngredientTable(e.target.value));
 
   let currentImageBase64 = null, currentAnalysis = null;
   const dz = document.getElementById('dz'), fileInput = document.getElementById('fileInput');
@@ -772,7 +785,7 @@ function renderInvoicesView(){
     try{
       const res = await api('/api/invoices/analyze', {method:'POST', body: JSON.stringify({imageBase64: invImageBase64})});
       document.getElementById('invStatus').textContent = '';
-      renderInvoiceResults(res.items);
+      renderInvoiceResults(res.items, res.detectedSupplierName);
     }catch(e){
       document.getElementById('invStatus').textContent = '';
       document.getElementById('invResult').innerHTML = `<div class="error-box" style="display:block;">${escapeHtml(e.message)}</div>`;
@@ -781,10 +794,13 @@ function renderInvoicesView(){
     }
   };
 
-  function renderInvoiceResults(items){
+  function renderInvoiceResults(items, detectedSupplierName){
     const box = document.getElementById('invResult');
     if(!items.length){ box.innerHTML = '<div class="empty">No line items could be read from this photo.</div>'; return; }
-    box.innerHTML = `<table><thead><tr><th>Invoice Item</th><th>Code</th><th>Matched Ingredient</th><th>Current → Invoice Price</th><th></th></tr></thead><tbody>
+    const supplierLine = detectedSupplierName
+      ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Detected issuing supplier: <b>${escapeHtml(detectedSupplierName)}</b></div>`
+      : `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Issuing supplier name not detected.</div>`;
+    box.innerHTML = supplierLine + `<table><thead><tr><th>Invoice Item</th><th>Code</th><th>Matched Ingredient</th><th>Current → Invoice Price</th><th></th></tr></thead><tbody>
       ${items.map((it, idx) => {
         let priceCell, actionCell = '';
         if(!it.matchedIngredientId){
@@ -797,13 +813,16 @@ function renderInvoicesView(){
         } else {
           priceCell = `<span style="color:var(--ink-soft);">—</span>`;
         }
+        const mismatchRow = it.supplierMismatch
+          ? `<tr><td colspan="5" style="border-top:none;padding-top:0;"><span class="tag" style="background:var(--warn-soft);color:var(--warn);">⚠ Registered supplier for this ingredient is "${escapeHtml(it.registeredSupplierName)}" — this invoice looks like it's from a different company. Double-check before updating the price.</span></td></tr>`
+          : '';
         return `<tr>
           <td>${escapeHtml(it.invoiceName||'')}</td>
           <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(it.productCode||'—')}</td>
           <td>${it.matchedName ? escapeHtml(it.matchedName) : '<span style="color:var(--ink-soft);">No match</span>'}</td>
           <td>${priceCell}</td>
           <td>${actionCell}</td>
-        </tr>`;
+        </tr>${mismatchRow}`;
       }).join('')}
     </tbody></table>`;
 
