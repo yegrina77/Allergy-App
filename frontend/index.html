@@ -120,6 +120,7 @@
     <button class="tab active" data-view="ingredients">Ingredients</button>
     <button class="tab" data-view="subrecipes">Sub-Recipes</button>
     <button class="tab" data-view="menu">Menu</button>
+    <button class="tab" data-view="invoices">Invoices</button>
     <button class="tab" data-view="staffLink">Staff View</button>
     <button class="tab" data-view="admins" id="tabAdmins" style="display:none;">Admin Accounts</button>
     <button class="tab" data-view="audit" id="tabAudit" style="display:none;">Change Log</button>
@@ -128,6 +129,7 @@
   <div id="view-ingredients"></div>
   <div id="view-subrecipes" style="display:none;"></div>
   <div id="view-menu" style="display:none;"></div>
+  <div id="view-invoices" style="display:none;"></div>
   <div id="view-staffLink" style="display:none;"></div>
   <div id="view-admins" style="display:none;"></div>
   <div id="view-audit" style="display:none;"></div>
@@ -149,6 +151,7 @@ let ingredientsCache = [];
 let subRecipesCache = [];
 let menuCache = [];
 let suppliersCache = [];
+let reverifyTarget = null;
 
 async function api(path, opts={}){
   const res = await fetch(path, {
@@ -236,13 +239,14 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
-    ['ingredients','subrecipes','menu','staffLink','admins','audit'].forEach(v => {
+    ['ingredients','subrecipes','menu','invoices','staffLink','admins','audit'].forEach(v => {
       document.getElementById('view-'+v).style.display = (v===tab.dataset.view) ? 'block' : 'none';
     });
     const v = tab.dataset.view;
     if(v === 'ingredients') renderIngredientsView();
     if(v === 'subrecipes') renderSubRecipesView();
     if(v === 'menu') renderMenuView();
+    if(v === 'invoices') renderInvoicesView();
     if(v === 'staffLink') renderStaffLinkView();
     if(v === 'admins') loadAdmins();
     if(v === 'audit') loadAudit();
@@ -297,6 +301,18 @@ function vegBadgesHtml(vegFlags){
     return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">${label}: not classified</span>`;
   };
   return one(vegFlags.vegetarian, 'Vegetarian', vegFlags.vegetarianCulprits) + one(vegFlags.vegan, 'Vegan', vegFlags.veganCulprits);
+}
+
+const RECHECK_DUE_DAYS = 180; // ~6 months
+
+function verifiedBadgeHtml(lastVerifiedAt){
+  if(!lastVerifiedAt) return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">Unknown</span>`;
+  const days = Math.floor((Date.now() - new Date(lastVerifiedAt).getTime()) / (1000*60*60*24));
+  const dateStr = formatDate(lastVerifiedAt);
+  if(days > RECHECK_DUE_DAYS){
+    return `<span class="tag" style="background:var(--warn-soft);color:var(--warn);">Re-check due · ${dateStr}</span>`;
+  }
+  return `<span style="color:var(--ink-soft);">${dateStr}</span>`;
 }
 
 // ---------- Reusable ingredient picker (search + supplier filter + chips) ----------
@@ -362,6 +378,7 @@ function renderIngredientsView(){
     <div class="row-flex">
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">Register Ingredient Photo</h2>
+        ${reverifyTarget ? `<div style="background:var(--accent-soft);border-radius:7px;padding:9px 12px;font-size:13px;margin-bottom:12px;">Re-verifying: <b>${escapeHtml(reverifyTarget.name)}</b> <button class="ghost" id="cancelReverifyBtn" style="padding:2px 8px;font-size:11px;margin-left:6px;">Cancel</button></div>` : ''}
         <div class="dropzone" id="dz">Drag & drop a photo, or click to select</div>
         <input type="file" id="fileInput" accept="image/*" capture="environment">
         <div class="preview" id="preview"><img id="previewImg"></div>
@@ -377,17 +394,24 @@ function renderIngredientsView(){
   `;
   const listEl = document.getElementById('ingredientList');
   if(ingredientsCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Allergens</th><th>Diet</th><th>Updated</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Allergens</th><th>Diet</th><th>Verified</th><th></th></tr></thead><tbody>
       ${ingredientsCache.map(ing => `
         <tr>
           <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
           <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
           <td>${allergenTagsHtml(ing.allergens)}</td>
           <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
-          <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(ing.updated_by_name||'')}<br>${formatDate(ing.updated_at)}</td>
-          <td><button class="danger" data-del-ing="${ing.id}">Delete</button></td>
+          <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at)}</td>
+          <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">Re-verify</button> <button class="danger" data-del-ing="${ing.id}">Delete</button></td>
         </tr>`).join('')}
     </tbody></table>`;
+    listEl.querySelectorAll('[data-reverify]').forEach(btn=>{
+      btn.onclick = () => {
+        reverifyTarget = ingredientsCache.find(i => i.id === btn.dataset.reverify) || null;
+        renderIngredientsView();
+        window.scrollTo({top:0, behavior:'smooth'});
+      };
+    });
     listEl.querySelectorAll('[data-del-ing]').forEach(btn=>{
       btn.onclick = async () => {
         if(!confirm('Delete this ingredient?')) return;
@@ -410,6 +434,9 @@ function renderIngredientsView(){
   const dz = document.getElementById('dz'), fileInput = document.getElementById('fileInput');
   const preview = document.getElementById('preview'), previewImg = document.getElementById('previewImg');
   const analyzeBtn = document.getElementById('analyzeBtn');
+
+  const cancelBtn = document.getElementById('cancelReverifyBtn');
+  if(cancelBtn) cancelBtn.onclick = () => { reverifyTarget = null; renderIngredientsView(); };
 
   dz.onclick = () => fileInput.click();
   dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); };
@@ -447,32 +474,32 @@ function renderIngredientsView(){
       document.getElementById('analyzeStatus').textContent = '';
       document.getElementById('analyzeResult').innerHTML = `
         <label>Ingredient name</label>
-        <input id="newIngName" placeholder="e.g. Soy Sauce, Curry (generic name)">
+        <input id="newIngName" placeholder="e.g. Soy Sauce, Curry (generic name)" value="${reverifyTarget ? escapeHtml(reverifyTarget.name) : ''}">
         <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">Detected allergens</div>
         <div>${allergenTagsHtml(currentAnalysis.allergens, 26)}</div>
         ${currentAnalysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(currentAnalysis.notes)}</div>` : ''}
         <label>Diet category (for Vegetarian/Vegan)</label>
         <select id="newIngDietCategory">
-          ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
+          ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}" ${reverifyTarget && (reverifyTarget.diet_category||'')===v ? 'selected':''}>${l}</option>`).join('')}
         </select>
         <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
-          <input type="checkbox" id="isSupplierProduct" style="width:auto;"> Is this a specific supplier's product?
+          <input type="checkbox" id="isSupplierProduct" style="width:auto;" ${reverifyTarget && reverifyTarget.supplier_id ? 'checked':''}> Is this a specific supplier's product?
         </label>
-        <div id="supplierFields" style="display:none;margin-top:8px;">
+        <div id="supplierFields" style="display:${reverifyTarget && reverifyTarget.supplier_id ? 'block':'none'};margin-top:8px;">
           <label>Product code (from invoice)</label>
-          <input id="newIngCode" placeholder="e.g. CR-4521">
+          <input id="newIngCode" placeholder="e.g. CR-4521" value="${reverifyTarget && reverifyTarget.product_code ? escapeHtml(reverifyTarget.product_code) : ''}">
           <div id="codeLookupMsg" style="font-size:12.5px;margin-top:4px;"></div>
           <label>Supplier</label>
           <select id="newIngSupplier">
             <option value="">Select...</option>
-            ${suppliersCache.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
+            ${suppliersCache.map(s => `<option value="${s.id}" ${reverifyTarget && reverifyTarget.supplier_id===s.id ? 'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
             <option value="__new__">+ Add new supplier</option>
           </select>
           <input id="newSupplierName" placeholder="New supplier name" style="display:none;margin-top:6px;">
           <label>Price (optional)</label>
-          <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 12.50">
+          <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 12.50" value="${reverifyTarget && reverifyTarget.price!=null ? reverifyTarget.price : ''}">
         </div>
-        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">Save this result</button>
+        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">${reverifyTarget ? 'Save Re-verification' : 'Save this result'}</button>
       `;
 
       const toggle = document.getElementById('isSupplierProduct');
@@ -503,7 +530,7 @@ function renderIngredientsView(){
         if(!name){ alert('Please enter an ingredient name.'); return; }
         const dietCategory = document.getElementById('newIngDietCategory').value || null;
 
-        let supplierId = null, productCode = null, price = null;
+        let supplierId = null, productCode = null, price = null, supplierTouched = true;
         if(toggle.checked){
           productCode = document.getElementById('newIngCode').value.trim() || null;
           const priceVal = document.getElementById('newIngPrice').value;
@@ -518,15 +545,26 @@ function renderIngredientsView(){
           } else if(supplierSelect){
             supplierId = supplierSelect;
           }
+        } else if(reverifyTarget){
+          // Re-verifying and the supplier checkbox is unchecked: leave supplier/code/price untouched.
+          supplierTouched = false;
         }
 
+        const body = {
+          name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
+          overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
+          photoBase64: currentImageBase64, dietCategory,
+        };
+        if(supplierTouched){ body.supplierId = supplierId; body.productCode = productCode; body.price = price; }
+
         try{
-          await api('/api/ingredients', {method:'POST', body: JSON.stringify({
-            name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
-            overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
-            supplierId, productCode, price, photoBase64: currentImageBase64, dietCategory,
-          })});
+          if(reverifyTarget){
+            await api('/api/ingredients/'+reverifyTarget.id, {method:'PUT', body: JSON.stringify(body)});
+          } else {
+            await api('/api/ingredients', {method:'POST', body: JSON.stringify(body)});
+          }
         }catch(e){ alert(e.message); return; }
+        reverifyTarget = null;
         await loadIngredients();
         renderIngredientsView();
       };
@@ -674,6 +712,107 @@ function renderMenuView(){
         if(!confirm('Delete this menu item?')) return;
         await api('/api/menu-items/'+btn.dataset.delMenu, {method:'DELETE'});
         await loadMenu(); renderMenuView();
+      };
+    });
+  }
+}
+
+// ---------- Invoices (price check) ----------
+function renderInvoicesView(){
+  const el = document.getElementById('view-invoices');
+  el.innerHTML = `
+    <div class="panel">
+      <h2 style="font-size:17px;margin-bottom:4px;">Check Invoice for Price Changes</h2>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">Upload a photo of a supplier invoice. We'll read the line items and compare their prices against what's currently registered (matched by product code). Nothing is saved automatically — review and apply below.</p>
+      <div class="dropzone" id="invDz">Drag & drop an invoice photo, or click to select</div>
+      <input type="file" id="invFileInput" accept="image/*" capture="environment">
+      <div class="preview" id="invPreview"><img id="invPreviewImg"></div>
+      <button class="primary" style="width:100%;margin-top:10px;" id="invAnalyzeBtn" disabled>Check Invoice</button>
+      <div id="invStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
+      <div id="invResult" style="margin-top:14px;"></div>
+    </div>
+  `;
+
+  let invImageBase64 = null;
+  const dz = document.getElementById('invDz'), fileInput = document.getElementById('invFileInput');
+  const preview = document.getElementById('invPreview'), previewImg = document.getElementById('invPreviewImg');
+  const analyzeBtn = document.getElementById('invAnalyzeBtn');
+
+  dz.onclick = () => fileInput.click();
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); };
+  dz.ondragleave = () => dz.classList.remove('drag');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+  fileInput.onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+
+  function handleFile(file){
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1600; // invoices have more text than a label, allow a bit more resolution
+        let {width,height} = img;
+        if(width>maxDim || height>maxDim){ const s=maxDim/Math.max(width,height); width=Math.round(width*s); height=Math.round(height*s); }
+        const canvas = document.createElement('canvas');
+        canvas.width=width; canvas.height=height;
+        canvas.getContext('2d').drawImage(img,0,0,width,height);
+        invImageBase64 = canvas.toDataURL('image/jpeg',0.9).split(',')[1];
+        previewImg.src = canvas.toDataURL('image/jpeg',0.9);
+        preview.style.display='block';
+        analyzeBtn.disabled = false;
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  analyzeBtn.onclick = async () => {
+    analyzeBtn.disabled = true;
+    document.getElementById('invStatus').innerHTML = '<span class="spinner"></span> Reading invoice...';
+    document.getElementById('invResult').innerHTML = '';
+    try{
+      const res = await api('/api/invoices/analyze', {method:'POST', body: JSON.stringify({imageBase64: invImageBase64})});
+      document.getElementById('invStatus').textContent = '';
+      renderInvoiceResults(res.items);
+    }catch(e){
+      document.getElementById('invStatus').textContent = '';
+      document.getElementById('invResult').innerHTML = `<div class="error-box" style="display:block;">${escapeHtml(e.message)}</div>`;
+    }finally{
+      analyzeBtn.disabled = false;
+    }
+  };
+
+  function renderInvoiceResults(items){
+    const box = document.getElementById('invResult');
+    if(!items.length){ box.innerHTML = '<div class="empty">No line items could be read from this photo.</div>'; return; }
+    box.innerHTML = `<table><thead><tr><th>Invoice Item</th><th>Code</th><th>Matched Ingredient</th><th>Current → Invoice Price</th><th></th></tr></thead><tbody>
+      ${items.map((it, idx) => {
+        let priceCell, actionCell = '';
+        if(!it.matchedIngredientId){
+          priceCell = `<span style="color:var(--ink-soft);">Not registered</span>`;
+        } else if(it.priceChanged){
+          priceCell = `<span style="color:var(--danger);font-weight:600;">$${it.currentPrice} → $${it.invoicePrice}</span>`;
+          actionCell = `<button class="ghost" data-apply-price="${idx}" style="font-size:11px;padding:5px 9px;">Update Price</button>`;
+        } else if(it.currentPrice != null){
+          priceCell = `<span style="color:var(--safe);">$${it.currentPrice} (unchanged)</span>`;
+        } else {
+          priceCell = `<span style="color:var(--ink-soft);">—</span>`;
+        }
+        return `<tr>
+          <td>${escapeHtml(it.invoiceName||'')}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(it.productCode||'—')}</td>
+          <td>${it.matchedName ? escapeHtml(it.matchedName) : '<span style="color:var(--ink-soft);">No match</span>'}</td>
+          <td>${priceCell}</td>
+          <td>${actionCell}</td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>`;
+
+    box.querySelectorAll('[data-apply-price]').forEach(btn => {
+      btn.onclick = async () => {
+        const it = items[parseInt(btn.dataset.applyPrice)];
+        await api('/api/ingredients/'+it.matchedIngredientId, {method:'PUT', body: JSON.stringify({price: it.invoicePrice})});
+        await loadIngredients();
+        btn.outerHTML = '<span style="color:var(--safe);font-size:12px;">Updated</span>';
       };
     });
   }
