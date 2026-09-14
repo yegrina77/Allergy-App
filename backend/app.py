@@ -527,8 +527,13 @@ def delete_ingredient(user, ing_id):
 # ------------------------------------------------------------------
 # Menu items CRUD (admin/owner) — allergens are computed from linked ingredients
 # ------------------------------------------------------------------
+GLUTEN_SOURCES = {"Wheat", "Rye", "Barley", "Oats", "Spelt", "Triticale"}
+DAIRY_SOURCES = {"Milk"}
+
+
 def compute_menu_allergens(ingredient_ids):
     merged = {}
+    contributors = {}
     for i in ingredient_ids:
         ing = load_ingredient(i)
         if not ing:
@@ -537,7 +542,26 @@ def compute_menu_allergens(ingredient_ids):
             key = a["name"]
             if key not in merged or a.get("confidence") == "high":
                 merged[key] = a
-    return list(merged.values())
+            contributors.setdefault(key, set()).add(ing["name"])
+    out = []
+    for name, a in merged.items():
+        d = dict(a)
+        d["ingredients"] = sorted(contributors.get(name, []))
+        out.append(d)
+    return out
+
+
+def compute_diet_flags(allergens_list):
+    gluten_hits = [a for a in allergens_list if a["name"] in GLUTEN_SOURCES]
+    dairy_hits = [a for a in allergens_list if a["name"] in DAIRY_SOURCES]
+    gluten_ingredients = sorted({ing for a in gluten_hits for ing in a.get("ingredients", [])})
+    dairy_ingredients = sorted({ing for a in dairy_hits for ing in a.get("ingredients", [])})
+    return {
+        "glutenFree": len(gluten_hits) == 0,
+        "glutenCulprits": gluten_ingredients,
+        "dairyFree": len(dairy_hits) == 0,
+        "dairyCulprits": dairy_ingredients,
+    }
 
 
 @app.route("/api/menu-items", methods=["GET"])
@@ -550,7 +574,9 @@ def list_menu_items(user):
     out = []
     for m in items:
         d = dict(m)
-        d["allergens"] = compute_menu_allergens(m.get("ingredient_ids", []))
+        allergens = compute_menu_allergens(m.get("ingredient_ids", []))
+        d["allergens"] = allergens
+        d["dietFlags"] = compute_diet_flags(allergens)
         out.append(d)
     return jsonify({"menuItems": out})
 
@@ -638,7 +664,9 @@ def staff_menu(slug):
     items = [load_menu(i) for i in ids]
     items = [m for m in items if m]
     items.sort(key=lambda m: m["name"])
-    out = [{"id": m["id"], "name": m["name"], "allergens": compute_menu_allergens(m.get("ingredient_ids", []))}
+    out = [{"id": m["id"], "name": m["name"],
+             "allergens": compute_menu_allergens(m.get("ingredient_ids", [])),
+             "dietFlags": compute_diet_flags(compute_menu_allergens(m.get("ingredient_ids", [])))}
            for m in items]
     return jsonify({"companyName": company["name"], "menuItems": out})
 
