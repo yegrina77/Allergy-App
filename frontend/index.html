@@ -68,10 +68,6 @@
   .dropzone.drag,.dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
   input[type=file]{display:none;}
   input[type=checkbox]{width:auto;padding:0;border:none;accent-color:var(--accent);cursor:pointer;}
-  input[type=date], input[type=month]{color-scheme: dark;}
-  input[type=date]::-webkit-calendar-picker-indicator, input[type=month]::-webkit-calendar-picker-indicator{
-    filter: invert(0.85); cursor:pointer; border-radius:4px;
-  }
   .preview{margin-top:10px;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:none;}
   .preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#0F0D0A;}
   .spinner{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:-2px;}
@@ -1114,6 +1110,7 @@ function renderInvoicesView(){
   function renderInvoiceResults(items, detectedSupplierName){
     const box = document.getElementById('invResult');
     if(!items.length){ box.innerHTML = '<div class="empty">No line items could be read from this photo.</div>'; return; }
+    const todayDate = new Date();
     const supplierLine = detectedSupplierName
       ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Detected issuing supplier: <b>${escapeHtml(detectedSupplierName)}</b></div>`
       : `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Issuing supplier name not detected.</div>`;
@@ -1147,9 +1144,17 @@ function renderInvoicesView(){
       }).join('')}
     </tbody></table>
     <div class="row-flex" style="gap:8px;margin-top:14px;align-items:flex-end;">
-      <div style="flex:1;min-width:140px;">
-        <label>Invoice date</label>
-        <input id="purchaseDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+      <div style="min-width:80px;">
+        <label>Day</label>
+        <select id="purchaseDay">${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${d===todayDate.getDate()?'selected':''}>${d}</option>`).join('')}</select>
+      </div>
+      <div style="min-width:130px;">
+        <label>Month</label>
+        <select id="purchaseMonth">${MONTH_NAMES.map((n,i)=>`<option value="${i}" ${i===todayDate.getMonth()?'selected':''}>${n}</option>`).join('')}</select>
+      </div>
+      <div style="min-width:90px;">
+        <label>Year</label>
+        <select id="purchaseYear">${[todayDate.getFullYear(), todayDate.getFullYear()-1].map(y=>`<option value="${y}">${y}</option>`).join('')}</select>
       </div>
       <button class="primary" id="logPurchaseBtn">Log as Purchase</button>
     </div>
@@ -1171,7 +1176,10 @@ function renderInvoicesView(){
       const statusEl = document.getElementById('logPurchaseStatus');
       statusEl.innerHTML = '<span class="spinner"></span> Saving...';
       try{
-        const date = document.getElementById('purchaseDate').value;
+        const y = document.getElementById('purchaseYear').value;
+        const mo = String(parseInt(document.getElementById('purchaseMonth').value) + 1).padStart(2,'0');
+        const d = String(parseInt(document.getElementById('purchaseDay').value)).padStart(2,'0');
+        const date = `${y}-${mo}-${d}`;
         const res = await api('/api/purchases', {method:'POST', body: JSON.stringify({
           date, supplierName: currentDetectedSupplier, lineItems: currentInvoiceItems,
         })});
@@ -1186,16 +1194,31 @@ function renderInvoicesView(){
 }
 
 // ---------- Reports ----------
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
 function renderReportsView(){
   const el = document.getElementById('view-reports');
-  const currentMonth = new Date().toISOString().slice(0,7); // YYYY-MM
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonthIdx = now.getMonth(); // 0-11
+  const yearOptions = [];
+  for(let y = currentYear; y >= currentYear - 4; y--) yearOptions.push(y);
+
   el.innerHTML = `
     <div class="panel">
       <h2 style="font-size:17px;margin-bottom:12px;">Monthly Purchase Report</h2>
       <div class="row-flex" style="gap:8px;align-items:flex-end;">
-        <div style="flex:1;min-width:140px;">
+        <div style="flex:1;min-width:120px;">
           <label>Month</label>
-          <input id="reportMonth" type="month" value="${currentMonth}">
+          <select id="reportMonthSelect">
+            ${MONTH_NAMES.map((n,i) => `<option value="${i}" ${i===currentMonthIdx?'selected':''}>${n}</option>`).join('')}
+          </select>
+        </div>
+        <div style="flex:1;min-width:90px;">
+          <label>Year</label>
+          <select id="reportYearSelect">
+            ${yearOptions.map(y => `<option value="${y}" ${y===currentYear?'selected':''}>${y}</option>`).join('')}
+          </select>
         </div>
         <button class="ghost" id="downloadReportBtn">Download Excel</button>
       </div>
@@ -1206,8 +1229,14 @@ function renderReportsView(){
     </div>
   `;
 
+  function currentReportMonth(){
+    const y = document.getElementById('reportYearSelect').value;
+    const m = String(parseInt(document.getElementById('reportMonthSelect').value) + 1).padStart(2,'0');
+    return `${y}-${m}`;
+  }
+
   async function loadAndRender(){
-    const month = document.getElementById('reportMonth').value;
+    const month = currentReportMonth();
     const report = await api('/api/purchases/report?month='+encodeURIComponent(month));
     document.getElementById('reportSummary').innerHTML = `
       <div class="row-flex" style="gap:16px;">
@@ -1249,10 +1278,10 @@ function renderReportsView(){
     }
   }
 
-  document.getElementById('reportMonth').addEventListener('change', loadAndRender);
+  document.getElementById('reportMonthSelect').addEventListener('change', loadAndRender);
+  document.getElementById('reportYearSelect').addEventListener('change', loadAndRender);
   document.getElementById('downloadReportBtn').onclick = () => {
-    const month = document.getElementById('reportMonth').value;
-    window.location.href = '/api/purchases/report/export?month=' + encodeURIComponent(month);
+    window.location.href = '/api/purchases/report/export?month=' + encodeURIComponent(currentReportMonth());
   };
 
   loadAndRender();
