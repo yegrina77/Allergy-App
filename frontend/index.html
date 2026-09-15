@@ -68,6 +68,10 @@
   .dropzone.drag,.dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
   input[type=file]{display:none;}
   input[type=checkbox]{width:auto;padding:0;border:none;accent-color:var(--accent);cursor:pointer;}
+  input[type=date], input[type=month]{color-scheme: dark;}
+  input[type=date]::-webkit-calendar-picker-indicator, input[type=month]::-webkit-calendar-picker-indicator{
+    filter: invert(0.85); cursor:pointer; border-radius:4px;
+  }
   .preview{margin-top:10px;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:none;}
   .preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#0F0D0A;}
   .spinner{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:-2px;}
