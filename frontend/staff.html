@@ -31,6 +31,24 @@
     font-family:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;
   }
   .filter-btn.on{background:var(--accent);border-color:var(--accent);color:#141210;}
+  .glossary-toggle{
+    background:none;border:none;color:var(--accent);font-family:inherit;font-size:12.5px;
+    cursor:pointer;padding:4px 0;margin-top:2px;
+  }
+  .glossary-box{margin-top:8px;}
+  .glossary-item{
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    margin-bottom:8px;overflow:hidden;backdrop-filter:blur(14px);
+  }
+  .glossary-item summary{
+    list-style:none;cursor:pointer;padding:11px 16px;font-weight:600;font-size:14px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .glossary-item summary::-webkit-details-marker{display:none;}
+  .glossary-item summary::after{content:'+';color:var(--ink-soft);font-weight:400;}
+  .glossary-item[open] summary::after{content:'–';}
+  .glossary-item .body{padding:0 16px 14px;font-size:13px;color:var(--ink-soft);line-height:1.55;}
+  .glossary-item .body b{color:var(--ink);}
   .item{
     background:var(--panel);border:1px solid var(--border);border-radius:12px;
     padding:0;margin-top:12px;overflow:hidden;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,0.3);
@@ -61,6 +79,8 @@
   <div class="sub">Search a menu item, or filter by diet, to see registered allergens.</div>
   <input id="search" placeholder="Search menu item...">
   <div class="filter-row" id="filterRow"></div>
+  <button type="button" id="glossaryToggleBtn" class="glossary-toggle">What do these mean? ▾</button>
+  <div id="glossaryBox" style="display:none;"></div>
   <div id="results"></div>
 </div>
 <script>
@@ -77,6 +97,71 @@ const FILTER_DEFS = [
   {id:'vegetarian', label:'Vegetarian', source:'veg'},
   {id:'vegan', label:'Vegan', source:'veg'},
 ];
+
+const GLOSSARY = [
+  {
+    label: 'Gluten Free',
+    definition: 'Gluten is a protein found in wheat and related grains. People with coeliac disease or a gluten intolerance need to avoid it completely — even a small trace can make them unwell.',
+    examples: 'Wheat, wheat flour, barley, rye, oats, malt, bread, pasta, flour tortillas, couscous, beer, most breadcrumbs, many sauces and gravies thickened with flour.',
+  },
+  {
+    label: 'Dairy Free',
+    definition: 'Dairy means milk and anything made from milk. This matters both for people with a milk allergy (an immune reaction) and lactose intolerance (difficulty digesting milk sugar).',
+    examples: 'Milk, butter, cheese, cream, yoghurt, whey, casein, ghee, condensed milk, ice cream, many creamy sauces and desserts.',
+  },
+  {
+    label: 'Nut Free',
+    definition: 'Covers both peanuts (technically a legume) and tree nuts. Nut allergies are among the most common — and can be among the most severe — food allergies.',
+    examples: 'Peanuts, peanut oil, almonds, cashews, walnuts, hazelnuts, pistachios, macadamias, pecans, pine nuts, brazil nuts, satay sauce, pesto, praline, nut-based milks.',
+  },
+  {
+    label: 'Shellfish Free',
+    definition: 'Covers crustaceans (like prawns and crab) and molluscs (like mussels and squid). Reactions to shellfish are common in adults and can be severe.',
+    examples: 'Prawns, crab, lobster, crayfish, mussels, oysters, squid/calamari, scallops, fish sauce, oyster sauce, shrimp paste.',
+  },
+  {
+    label: 'Vegetarian',
+    definition: 'No meat, poultry, or fish/seafood. Vegetarians typically still eat dairy, eggs, and honey — it\'s about avoiding animal flesh, not all animal products.',
+    examples: 'Avoid: beef, chicken, pork, lamb, fish, prawns, bacon, gelatine (often made from animal bones), lard, stock made from meat or fish.',
+  },
+  {
+    label: 'Vegan',
+    definition: 'No animal products at all — not just meat and fish, but also dairy, eggs, honey, and anything else derived from an animal.',
+    examples: 'Everything avoided for Vegetarian, plus: milk, cheese, butter, cream, eggs, honey, mayonnaise, and some wines/beers (filtered using animal products).',
+  },
+  {
+    label: 'Lupin',
+    definition: 'Lupin is a legume related to peanuts, sometimes milled into flour or used as a protein source — especially in gluten-free baking. It\'s less well known than the "big" allergens but reactions can be severe, and it isn\'t always obvious it\'s in a product.',
+    examples: 'Lupin flour, lupin seeds, some gluten-free breads and pasta, some vegetarian meat substitutes, certain European-style baked goods.',
+  },
+  {
+    label: 'Sulphites',
+    definition: 'Sulphites are preservatives added to stop food and drink from spoiling or browning. They don\'t cause a classic food allergy, but sensitive people — especially with asthma — can have breathing reactions.',
+    examples: 'Wine, beer, cider, dried fruit (apricots, raisins, sultanas), pickled vegetables, some sausages and processed meats, vinegar, some cordials and soft drinks.',
+  },
+];
+
+function renderGlossary(){
+  document.getElementById('glossaryBox').innerHTML = GLOSSARY.map(g => `
+    <details class="glossary-item">
+      <summary>${escapeHtml(g.label)}</summary>
+      <div class="body">
+        ${escapeHtml(g.definition)}<br><br>
+        <b>Common foods to look out for:</b> ${escapeHtml(g.examples)}
+      </div>
+    </details>
+  `).join('');
+}
+renderGlossary();
+
+document.getElementById('glossaryToggleBtn').onclick = () => {
+  const box = document.getElementById('glossaryBox');
+  const btn = document.getElementById('glossaryToggleBtn');
+  const showing = box.style.display !== 'none';
+  box.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? 'What do these mean? ▾' : 'What do these mean? ▴';
+};
+
 
 function renderFilterRow(){
   const row = document.getElementById('filterRow');
