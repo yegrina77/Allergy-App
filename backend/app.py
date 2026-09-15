@@ -522,14 +522,32 @@ def bulk_import_ingredients(user):
 
     # Detect code/name/price columns from the header row; fall back to column order.
     header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
-    code_col = name_col = price_col = None
+    PRICE_KEYWORDS = ("price", "cost", "rate", "amount")
+    CODE_KEYWORDS = ("code", "sku", "item no", "product no", "part no", "no.", " no")
+    NAME_KEYWORDS = ("description", "name", "product")
+
+    code_col = price_col = name_col = None
     for idx, h in enumerate(header):
-        if "code" in h:
-            code_col = idx
-        elif "price" in h:
+        if any(k in h for k in PRICE_KEYWORDS):
             price_col = idx
-        elif name_col is None and h:
+            break
+    for idx, h in enumerate(header):
+        if idx == price_col:
+            continue
+        if any(k in h for k in CODE_KEYWORDS) or h == "no":
+            code_col = idx
+            break
+    for idx, h in enumerate(header):
+        if idx in (code_col, price_col):
+            continue
+        if any(k in h for k in NAME_KEYWORDS):
             name_col = idx
+            break
+    if name_col is None:
+        for idx, h in enumerate(header):
+            if idx not in (code_col, price_col) and h:
+                name_col = idx
+                break
     if code_col is None and name_col is None and price_col is None:
         code_col, name_col, price_col = 0, 1, 2
     data_rows = rows[1:]
