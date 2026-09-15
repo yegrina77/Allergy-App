@@ -249,10 +249,7 @@ async function boot(){
     document.getElementById('tabAdmins').style.display='inline-block';
     document.getElementById('tabAudit').style.display='inline-block';
   }
-  await loadSuppliers();
-  await loadIngredients();
-  await loadSubRecipes();
-  await loadMenu();
+  await Promise.all([loadSuppliers(), loadIngredients(), loadSubRecipes(), loadMenu()]);
   renderIngredientsView();
   renderSubRecipesView();
   renderMenuView();
