@@ -145,6 +145,7 @@
     <button class="tab" data-view="subrecipes">Sub-Recipes</button>
     <button class="tab" data-view="menu">Menu</button>
     <button class="tab" data-view="invoices">Invoices</button>
+    <button class="tab" data-view="reports">Reports</button>
     <button class="tab" data-view="staffLink">Staff View</button>
     <button class="tab" data-view="admins" id="tabAdmins" style="display:none;">Admin Accounts</button>
     <button class="tab" data-view="audit" id="tabAudit" style="display:none;">Change Log</button>
@@ -154,6 +155,7 @@
   <div id="view-subrecipes" style="display:none;"></div>
   <div id="view-menu" style="display:none;"></div>
   <div id="view-invoices" style="display:none;"></div>
+  <div id="view-reports" style="display:none;"></div>
   <div id="view-staffLink" style="display:none;"></div>
   <div id="view-admins" style="display:none;"></div>
   <div id="view-audit" style="display:none;"></div>
@@ -264,7 +266,7 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
-    ['ingredients','subrecipes','menu','invoices','staffLink','admins','audit'].forEach(v => {
+    ['ingredients','subrecipes','menu','invoices','reports','staffLink','admins','audit'].forEach(v => {
       document.getElementById('view-'+v).style.display = (v===tab.dataset.view) ? 'block' : 'none';
     });
     const v = tab.dataset.view;
@@ -272,6 +274,7 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
     if(v === 'subrecipes') renderSubRecipesView();
     if(v === 'menu') renderMenuView();
     if(v === 'invoices') renderInvoicesView();
+    if(v === 'reports') renderReportsView();
     if(v === 'staffLink') renderStaffLinkView();
     if(v === 'admins') loadAdmins();
     if(v === 'audit') loadAudit();
@@ -1041,8 +1044,8 @@ function renderInvoicesView(){
   const el = document.getElementById('view-invoices');
   el.innerHTML = `
     <div class="panel">
-      <h2 style="font-size:17px;margin-bottom:4px;">Check Invoice for Price Changes</h2>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">Upload a photo of a supplier invoice. We'll read the line items and compare their prices against what's currently registered (matched by product code). Nothing is saved automatically — review and apply below.</p>
+      <h2 style="font-size:17px;margin-bottom:4px;">Check Invoice & Log Purchase</h2>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">Upload a photo of a supplier invoice. We'll read quantities and prices, compare against what's registered, and let you log it as a purchase for this month's spend report.</p>
       <div class="dropzone" id="invDz">Drag & drop an invoice photo, or click to select</div>
       <input type="file" id="invFileInput" accept="image/*" capture="environment">
       <div class="preview" id="invPreview"><img id="invPreviewImg"></div>
@@ -1053,6 +1056,8 @@ function renderInvoicesView(){
   `;
 
   let invImageBase64 = null;
+  let currentInvoiceItems = null;
+  let currentDetectedSupplier = null;
   const dz = document.getElementById('invDz'), fileInput = document.getElementById('invFileInput');
   const preview = document.getElementById('invPreview'), previewImg = document.getElementById('invPreviewImg');
   const analyzeBtn = document.getElementById('invAnalyzeBtn');
@@ -1091,6 +1096,8 @@ function renderInvoicesView(){
     try{
       const res = await api('/api/invoices/analyze', {method:'POST', body: JSON.stringify({imageBase64: invImageBase64})});
       document.getElementById('invStatus').textContent = '';
+      currentInvoiceItems = res.items;
+      currentDetectedSupplier = res.detectedSupplierName;
       renderInvoiceResults(res.items, res.detectedSupplierName);
     }catch(e){
       document.getElementById('invStatus').textContent = '';
@@ -1106,41 +1113,145 @@ function renderInvoicesView(){
     const supplierLine = detectedSupplierName
       ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Detected issuing supplier: <b>${escapeHtml(detectedSupplierName)}</b></div>`
       : `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Issuing supplier name not detected.</div>`;
-    box.innerHTML = supplierLine + `<table><thead><tr><th>Invoice Item</th><th>Code</th><th>Matched Ingredient</th><th>Current → Invoice Price</th><th></th></tr></thead><tbody>
+    box.innerHTML = supplierLine + `<table><thead><tr><th>Invoice Item</th><th>Code</th><th>Matched Ingredient</th><th>Qty</th><th>Unit Price</th><th>Line Total</th><th></th></tr></thead><tbody>
       ${items.map((it, idx) => {
         let priceCell, actionCell = '';
         if(!it.matchedIngredientId){
           priceCell = `<span style="color:var(--ink-soft);">Not registered</span>`;
         } else if(it.priceChanged){
-          priceCell = `<span style="color:var(--danger);font-weight:600;">$${it.currentPrice} → $${it.invoicePrice}</span>`;
+          priceCell = `<span style="color:var(--danger);font-weight:600;">$${it.currentPrice} → $${it.unitPrice}</span>`;
           actionCell = `<button class="ghost" data-apply-price="${idx}" style="font-size:11px;padding:5px 9px;">Update Price</button>`;
         } else if(it.currentPrice != null){
-          priceCell = `<span style="color:var(--safe);">$${it.currentPrice} (unchanged)</span>`;
+          priceCell = `<span style="color:var(--safe);">$${it.currentPrice}</span>`;
+        } else if(it.unitPrice != null){
+          priceCell = `$${it.unitPrice}`;
         } else {
           priceCell = `<span style="color:var(--ink-soft);">—</span>`;
         }
         const mismatchRow = it.supplierMismatch
-          ? `<tr><td colspan="5" style="border-top:none;padding-top:0;"><span class="tag" style="background:var(--warn-soft);color:var(--warn);">⚠ Registered supplier for this ingredient is "${escapeHtml(it.registeredSupplierName)}" — this invoice looks like it's from a different company. Double-check before updating the price.</span></td></tr>`
+          ? `<tr><td colspan="7" style="border-top:none;padding-top:0;"><span class="tag" style="background:var(--warn-soft);color:var(--warn);">⚠ Registered supplier for this ingredient is "${escapeHtml(it.registeredSupplierName)}" — this invoice looks like it's from a different company. Double-check before updating the price.</span></td></tr>`
           : '';
         return `<tr>
           <td>${escapeHtml(it.invoiceName||'')}</td>
           <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(it.productCode||'—')}</td>
           <td>${it.matchedName ? escapeHtml(it.matchedName) : '<span style="color:var(--ink-soft);">No match</span>'}</td>
-          <td>${priceCell}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${it.quantity != null ? it.quantity : '—'}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${priceCell}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${it.lineTotal != null ? '$'+it.lineTotal.toFixed(2) : '—'}</td>
           <td>${actionCell}</td>
         </tr>${mismatchRow}`;
       }).join('')}
-    </tbody></table>`;
+    </tbody></table>
+    <div class="row-flex" style="gap:8px;margin-top:14px;align-items:flex-end;">
+      <div style="flex:1;min-width:140px;">
+        <label>Invoice date</label>
+        <input id="purchaseDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+      </div>
+      <button class="primary" id="logPurchaseBtn">Log as Purchase</button>
+    </div>
+    <div id="logPurchaseStatus" style="font-size:13px;margin-top:8px;"></div>
+    `;
 
     box.querySelectorAll('[data-apply-price]').forEach(btn => {
       btn.onclick = async () => {
         const it = items[parseInt(btn.dataset.applyPrice)];
-        await api('/api/ingredients/'+it.matchedIngredientId, {method:'PUT', body: JSON.stringify({price: it.invoicePrice})});
+        await api('/api/ingredients/'+it.matchedIngredientId, {method:'PUT', body: JSON.stringify({price: it.unitPrice})});
         await loadIngredients();
         btn.outerHTML = '<span style="color:var(--safe);font-size:12px;">Updated</span>';
       };
     });
+
+    document.getElementById('logPurchaseBtn').onclick = async () => {
+      const btn = document.getElementById('logPurchaseBtn');
+      btn.disabled = true;
+      const statusEl = document.getElementById('logPurchaseStatus');
+      statusEl.innerHTML = '<span class="spinner"></span> Saving...';
+      try{
+        const date = document.getElementById('purchaseDate').value;
+        const res = await api('/api/purchases', {method:'POST', body: JSON.stringify({
+          date, supplierName: currentDetectedSupplier, lineItems: currentInvoiceItems,
+        })});
+        statusEl.innerHTML = `<span style="color:var(--safe);">Logged $${res.purchase.total_amount.toFixed(2)} as a purchase on ${res.purchase.date}.</span>`;
+      }catch(e){
+        statusEl.innerHTML = `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
+      }finally{
+        btn.disabled = false;
+      }
+    };
   }
+}
+
+// ---------- Reports ----------
+function renderReportsView(){
+  const el = document.getElementById('view-reports');
+  const currentMonth = new Date().toISOString().slice(0,7); // YYYY-MM
+  el.innerHTML = `
+    <div class="panel">
+      <h2 style="font-size:17px;margin-bottom:12px;">Monthly Purchase Report</h2>
+      <div class="row-flex" style="gap:8px;align-items:flex-end;">
+        <div style="flex:1;min-width:140px;">
+          <label>Month</label>
+          <input id="reportMonth" type="month" value="${currentMonth}">
+        </div>
+        <button class="ghost" id="downloadReportBtn">Download Excel</button>
+      </div>
+      <div id="reportSummary" style="margin-top:16px;"></div>
+      <div id="reportItems" style="margin-top:10px;"></div>
+      <div style="font-size:12px;color:var(--ink-soft);margin:18px 0 6px;">Logged purchases this month</div>
+      <div id="reportPurchases"></div>
+    </div>
+  `;
+
+  async function loadAndRender(){
+    const month = document.getElementById('reportMonth').value;
+    const report = await api('/api/purchases/report?month='+encodeURIComponent(month));
+    document.getElementById('reportSummary').innerHTML = `
+      <div class="row-flex" style="gap:16px;">
+        <div><div style="font-family:'Newsreader',serif;font-size:24px;font-weight:600;">$${report.totalSpent.toFixed(2)}</div><div style="font-size:11.5px;color:var(--ink-soft);">Total spent</div></div>
+        <div><div style="font-family:'Newsreader',serif;font-size:24px;font-weight:600;">${report.purchaseCount}</div><div style="font-size:11.5px;color:var(--ink-soft);">Invoices logged</div></div>
+      </div>
+    `;
+    const itemsBox = document.getElementById('reportItems');
+    if(!report.items.length){
+      itemsBox.innerHTML = '<div class="empty">No purchases logged for this month yet.</div>';
+    } else {
+      itemsBox.innerHTML = `<table><thead><tr><th>Item</th><th>Code</th><th>Supplier</th><th>Quantity</th><th>Total Spent</th></tr></thead><tbody>
+        ${report.items.map(it => `<tr>
+          <td><b>${escapeHtml(it.name)}</b></td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(it.productCode||'—')}</td>
+          <td style="font-size:12.5px;color:var(--ink-soft);">${escapeHtml(it.supplierName||'—')}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${it.totalQuantity != null ? it.totalQuantity : '—'}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">$${it.totalSpent.toFixed(2)}</td>
+        </tr>`).join('')}
+      </tbody></table>`;
+    }
+
+    const purchases = await api('/api/purchases?month='+encodeURIComponent(month));
+    const purchasesBox = document.getElementById('reportPurchases');
+    if(!purchases.purchases.length){
+      purchasesBox.innerHTML = '<div class="empty">Nothing logged yet.</div>';
+    } else {
+      purchasesBox.innerHTML = purchases.purchases.map(p => `
+        <details class="menu-item-card">
+          <summary>
+            <span class="name" style="font-size:14px;">${escapeHtml(p.date)} · ${escapeHtml(p.supplier_name||'Unknown supplier')}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);flex-shrink:0;">$${p.total_amount.toFixed(2)}</span>
+          </summary>
+          <div class="item-detail">
+            ${p.line_items.map(li => `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:3px;">${escapeHtml(li.matchedName||li.itemName)} — qty ${li.quantity!=null?li.quantity:'?'} @ $${li.unitPrice!=null?li.unitPrice:'?'} = $${li.lineTotal!=null?li.lineTotal.toFixed(2):'?'}</div>`).join('')}
+          </div>
+        </details>
+      `).join('');
+    }
+  }
+
+  document.getElementById('reportMonth').addEventListener('change', loadAndRender);
+  document.getElementById('downloadReportBtn').onclick = () => {
+    const month = document.getElementById('reportMonth').value;
+    window.location.href = '/api/purchases/report/export?month=' + encodeURIComponent(month);
+  };
+
+  loadAndRender();
 }
 
 // ---------- Staff link ----------
