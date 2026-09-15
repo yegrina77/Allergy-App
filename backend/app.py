@@ -924,8 +924,9 @@ def compute_allergens(ingredient_records):
 def compute_diet_flags(allergens_list, ingredient_records=None):
     def norm(s):
         return (s or "").strip().lower()
-    has_unverified = bool(ingredient_records) and any(not r.get("last_verified_at") for r in ingredient_records)
-    unverified_names = sorted({r["name"] for r in (ingredient_records or []) if not r.get("last_verified_at")})
+    unverified_records = [r for r in (ingredient_records or []) if not r.get("last_verified_at") and not r.get("is_free")]
+    has_unverified = bool(unverified_records)
+    unverified_names = sorted({r["name"] for r in unverified_records})
 
     result = {}
     for key, sources, _label in DIET_FLAG_DEFS:
