@@ -767,6 +767,33 @@ def delete_ingredient(user, ing_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/ingredients/bulk-delete", methods=["POST"])
+@login_required()
+def bulk_delete_ingredients(user):
+    data = request.get_json(force=True)
+    ids_to_delete = set(data.get("ids", []))
+    if not ids_to_delete:
+        return jsonify({"error": "No ingredients selected."}), 400
+
+    ing_ids = list_ingredient_ids(user["company_id"])
+    remaining_ids = []
+    deleted_count = 0
+    for i in ing_ids:
+        if i in ids_to_delete:
+            ing = load_ingredient(i)
+            if ing:
+                _raw_delete(f"allergy_ingredient:{i}")
+                deleted_count += 1
+        else:
+            remaining_ids.append(i)
+    _raw_set(f"allergy_ingredient_ids:{user['company_id']}", remaining_ids)
+
+    if deleted_count:
+        log_action(user["company_id"], user, "deleted", "ingredient", f"{deleted_count} ingredients (bulk delete)")
+
+    return jsonify({"deletedCount": deleted_count})
+
+
 # ------------------------------------------------------------------
 # Allergen / diet computation shared by sub-recipes and menu items
 # ------------------------------------------------------------------
