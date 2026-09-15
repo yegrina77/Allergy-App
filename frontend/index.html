@@ -67,6 +67,7 @@
   .dropzone{border:1.5px dashed var(--border);border-radius:8px;padding:22px 14px;text-align:center;cursor:pointer;color:var(--ink-soft);font-size:13.5px;}
   .dropzone.drag,.dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
   input[type=file]{display:none;}
+  input[type=checkbox]{width:auto;padding:0;border:none;accent-color:var(--accent);cursor:pointer;}
   .preview{margin-top:10px;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:none;}
   .preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#0F0D0A;}
   .spinner{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:-2px;}
@@ -170,11 +171,12 @@ const DIET_CATEGORY_LABELS = {
 };
 
 let ME = null;
+let reverifyTarget = null;
+let selectedForDelete = new Set();
 let ingredientsCache = [];
 let subRecipesCache = [];
 let menuCache = [];
 let suppliersCache = [];
-let reverifyTarget = null;
 
 async function api(path, opts={}){
   const res = await fetch(path, {
@@ -426,9 +428,22 @@ function renderIngredientTable(nameQuery, supplierQuery){
   if(!ingredientsCache.length){ listEl.innerHTML = '<div class="empty">No ingredients registered yet.</div>'; return; }
   if(!filtered.length){ listEl.innerHTML = '<div class="empty">No matching ingredients.</div>'; return; }
 
-  listEl.innerHTML = `<table><thead><tr><th>Name</th><th>Supplier / Code</th><th>Price</th><th>Allergens</th><th>Diet</th><th>Verified</th><th></th></tr></thead><tbody>
+  const filteredIds = new Set(filtered.map(i => i.id));
+  const allVisibleSelected = filtered.length > 0 && filtered.every(i => selectedForDelete.has(i.id));
+
+  listEl.innerHTML = `
+    <div id="bulkDeleteToolbar" style="display:${selectedForDelete.size ? 'flex':'none'};align-items:center;gap:10px;margin-bottom:8px;">
+      <span style="font-size:12.5px;color:var(--ink-soft);"><b id="bulkSelCount">${selectedForDelete.size}</b> selected</span>
+      <button class="danger" id="bulkDeleteBtn">Delete Selected</button>
+      <button class="ghost" id="bulkClearBtn" style="padding:5px 9px;font-size:11px;">Clear</button>
+    </div>
+    <table><thead><tr>
+      <th><input type="checkbox" id="selectAllVisible" ${allVisibleSelected?'checked':''}></th>
+      <th>Name</th><th>Supplier / Code</th><th>Price</th><th>Allergens</th><th>Diet</th><th>Verified</th><th></th>
+    </tr></thead><tbody>
     ${filtered.map(ing => `
       <tr>
+        <td><input type="checkbox" class="ing-check" data-id="${ing.id}" ${selectedForDelete.has(ing.id)?'checked':''}></td>
         <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
         <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
         <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${ing.price != null ? '$'+Number(ing.price).toFixed(2) : '<span style="color:var(--ink-soft);font-family:inherit;">—</span>'}</td>
@@ -438,6 +453,45 @@ function renderIngredientTable(nameQuery, supplierQuery){
         <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">Re-verify</button> <button class="danger" data-del-ing="${ing.id}">Delete</button></td>
       </tr>`).join('')}
   </tbody></table>`;
+
+  function updateToolbar(){
+    document.getElementById('bulkDeleteToolbar').style.display = selectedForDelete.size ? 'flex' : 'none';
+    const countEl = document.getElementById('bulkSelCount');
+    if(countEl) countEl.textContent = selectedForDelete.size;
+    const selectAll = document.getElementById('selectAllVisible');
+    if(selectAll) selectAll.checked = filtered.length > 0 && filtered.every(i => selectedForDelete.has(i.id));
+  }
+
+  document.getElementById('selectAllVisible').onchange = (e) => {
+    if(e.target.checked) filtered.forEach(i => selectedForDelete.add(i.id));
+    else filtered.forEach(i => selectedForDelete.delete(i.id));
+    listEl.querySelectorAll('.ing-check').forEach(cb => { cb.checked = selectedForDelete.has(cb.dataset.id); });
+    updateToolbar();
+  };
+  listEl.querySelectorAll('.ing-check').forEach(cb => {
+    cb.onchange = () => {
+      if(cb.checked) selectedForDelete.add(cb.dataset.id);
+      else selectedForDelete.delete(cb.dataset.id);
+      updateToolbar();
+    };
+  });
+  const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+  if(bulkDeleteBtn){
+    bulkDeleteBtn.onclick = async () => {
+      if(!confirm(`Delete ${selectedForDelete.size} selected ingredients?`)) return;
+      await api('/api/ingredients/bulk-delete', {method:'POST', body: JSON.stringify({ids:[...selectedForDelete]})});
+      selectedForDelete.clear();
+      await loadIngredients();
+      renderIngredientTable(nameQuery, supplierQuery);
+    };
+  }
+  const bulkClearBtn = document.getElementById('bulkClearBtn');
+  if(bulkClearBtn){
+    bulkClearBtn.onclick = () => {
+      selectedForDelete.clear();
+      renderIngredientTable(nameQuery, supplierQuery);
+    };
+  }
 
   listEl.querySelectorAll('[data-reverify]').forEach(btn=>{
     btn.onclick = () => {
@@ -450,6 +504,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
     btn.onclick = async () => {
       if(!confirm('Delete this ingredient?')) return;
       await api('/api/ingredients/'+btn.dataset.delIng, {method:'DELETE'});
+      selectedForDelete.delete(btn.dataset.delIng);
       await loadIngredients(); renderIngredientsView();
     };
   });
