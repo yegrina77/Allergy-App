@@ -23,6 +23,24 @@ app.config.update(
 )
 
 redis = Redis.from_env()  # UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN 환경변수 사용
+UPSTASH_REST_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
+UPSTASH_REST_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+
+
+def _raw_pipeline(commands):
+    """Send many Redis commands in ONE HTTP request via Upstash's pipeline REST
+    endpoint, instead of one request per command. Used for bulk operations
+    (import, bulk delete) so they don't take many seconds of round trips."""
+    if not commands:
+        return []
+    resp = requests.post(
+        f"{UPSTASH_REST_URL}/pipeline",
+        headers={"Authorization": f"Bearer {UPSTASH_REST_TOKEN}", "Content-Type": "application/json"},
+        json=commands,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 # ---- NZ / AU Food Standards Code (Standard 1.2.3, PEAL) allergen list ----
 ALLERGENS = [
@@ -577,6 +595,7 @@ def bulk_import_ingredients(user):
             existing_codes[ing["product_code"]] = ing["name"]
 
     created, skipped = [], []
+    write_commands = []
     for r in data_rows:
         code = str(r[code_col]).strip() if code_col is not None and code_col < len(r) and r[code_col] is not None else None
         name = str(r[name_col]).strip() if name_col is not None and name_col < len(r) and r[name_col] is not None else None
@@ -604,13 +623,14 @@ def bulk_import_ingredients(user):
             "updated_by_id": user["id"], "updated_by_name": user["name"],
             "created_at": now_iso(), "updated_at": now_iso(),
         }
-        _raw_set(f"allergy_ingredient:{ing_id}", ingredient)
+        write_commands.append(["SET", f"allergy_ingredient:{ing_id}", json.dumps(ingredient)])
         ing_ids.append(ing_id)
         if code:
             existing_codes[code] = name
         created.append({"code": code, "name": name, "price": price})
 
-    _raw_set(f"allergy_ingredient_ids:{user['company_id']}", ing_ids)
+    write_commands.append(["SET", f"allergy_ingredient_ids:{user['company_id']}", json.dumps(ing_ids)])
+    _raw_pipeline(write_commands)
     if created:
         log_action(user["company_id"], user, "created", "bulk_import", f"{len(created)} ingredients from {supplier_name}")
 
@@ -776,17 +796,13 @@ def bulk_delete_ingredients(user):
         return jsonify({"error": "No ingredients selected."}), 400
 
     ing_ids = list_ingredient_ids(user["company_id"])
-    remaining_ids = []
-    deleted_count = 0
-    for i in ing_ids:
-        if i in ids_to_delete:
-            ing = load_ingredient(i)
-            if ing:
-                _raw_delete(f"allergy_ingredient:{i}")
-                deleted_count += 1
-        else:
-            remaining_ids.append(i)
-    _raw_set(f"allergy_ingredient_ids:{user['company_id']}", remaining_ids)
+    ids_present = [i for i in ing_ids if i in ids_to_delete]
+    remaining_ids = [i for i in ing_ids if i not in ids_to_delete]
+
+    commands = [["DEL", f"allergy_ingredient:{i}"] for i in ids_present]
+    commands.append(["SET", f"allergy_ingredient_ids:{user['company_id']}", json.dumps(remaining_ids)])
+    _raw_pipeline(commands)
+    deleted_count = len(ids_present)
 
     if deleted_count:
         log_action(user["company_id"], user, "deleted", "ingredient", f"{deleted_count} ingredients (bulk delete)")
