@@ -479,10 +479,19 @@ function renderIngredientTable(nameQuery, supplierQuery){
   if(bulkDeleteBtn){
     bulkDeleteBtn.onclick = async () => {
       if(!confirm(`Delete ${selectedForDelete.size} selected ingredients?`)) return;
-      await api('/api/ingredients/bulk-delete', {method:'POST', body: JSON.stringify({ids:[...selectedForDelete]})});
-      selectedForDelete.clear();
-      await loadIngredients();
-      renderIngredientTable(nameQuery, supplierQuery);
+      bulkDeleteBtn.disabled = true;
+      const originalText = bulkDeleteBtn.textContent;
+      bulkDeleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
+      try{
+        await api('/api/ingredients/bulk-delete', {method:'POST', body: JSON.stringify({ids:[...selectedForDelete]})});
+        selectedForDelete.clear();
+        await loadIngredients();
+        renderIngredientTable(nameQuery, supplierQuery);
+      }catch(e){
+        alert(e.message);
+        bulkDeleteBtn.disabled = false;
+        bulkDeleteBtn.textContent = originalText;
+      }
     };
   }
   const bulkClearBtn = document.getElementById('bulkClearBtn');
