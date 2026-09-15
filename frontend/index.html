@@ -163,6 +163,9 @@
 const ALLERGENS = ["Wheat","Rye","Barley","Oats","Spelt","Triticale","Crustacea","Molluscs","Fish","Egg","Milk",
   "Peanuts","Sesame","Soybeans","Lupin","Almond","Brazil Nut","Cashew","Hazelnut","Macadamia","Pecan","Pine Nut","Pistachio","Walnut","Sulphites","Royal Jelly"];
 
+const UNIT_OPTIONS = ["g","kg","ml","l","each"];
+const UNIT_FAMILY = {g:"weight", kg:"weight", ml:"volume", l:"volume", each:"count"};
+
 const DIET_CATEGORY_LABELS = {
   "": "Not set / Unknown",
   "plant": "Plant-based",
@@ -329,6 +332,13 @@ function vegBadgesHtml(vegFlags){
   return one(vegFlags.vegetarian, 'Vegetarian', vegFlags.vegetarianCulprits) + one(vegFlags.vegan, 'Vegan', vegFlags.veganCulprits);
 }
 
+function priceCellHtml(ing){
+  if(ing.is_free) return '<span style="color:var(--safe);font-family:inherit;">Free</span>';
+  if(ing.price == null) return '<span style="color:var(--ink-soft);font-family:inherit;">—</span>';
+  const pkg = (ing.unit && ing.package_qty) ? ` / ${ing.package_qty}${ing.unit}` : '<span style="color:var(--warn);font-family:inherit;"> (no unit set)</span>';
+  return `$${Number(ing.price).toFixed(2)}${pkg}`;
+}
+
 const RECHECK_DUE_DAYS = 180; // ~6 months
 
 function dotRowHtml(dietFlags, vegFlags){
@@ -357,7 +367,7 @@ function verifiedBadgeHtml(lastVerifiedAt){
 }
 
 // ---------- Reusable ingredient picker (search + supplier filter + chips) ----------
-function setupIngredientPicker({searchId, filterRowId, boxId, selectedSet}){
+function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
   let currentFilter = 'all';
   let currentSearch = '';
 
@@ -386,12 +396,41 @@ function setupIngredientPicker({searchId, filterRowId, boxId, selectedSet}){
     const filtered = ingredientsCache.filter(ing => matches(ing) && (!q || ing.name.toLowerCase().includes(q)));
     if(!ingredientsCache.length){ box.innerHTML = '<span class="empty">Register ingredients first.</span>'; return; }
     if(!filtered.length){ box.innerHTML = '<span class="empty">No matching ingredients.</span>'; return; }
-    box.innerHTML = filtered.map(ing => `<span class="chip ${selectedSet.has(ing.id)?'on':''}" data-ing="${ing.id}">${escapeHtml(ing.name)}${ing.supplier_name ? ' <span style="opacity:.7;">('+escapeHtml(ing.supplier_name)+')</span>' : ''}</span>`).join('');
-    box.querySelectorAll('[data-ing]').forEach(chip => {
+    box.innerHTML = filtered.map(ing => {
+      const sel = selectedMap.has(ing.id);
+      const cur = selectedMap.get(ing.id) || {qty:'', unit: ing.unit || 'g'};
+      return `<div style="margin:2px 0;">
+        <span class="chip ${sel?'on':''}" data-ing="${ing.id}">${escapeHtml(ing.name)}${ing.supplier_name ? ' <span style="opacity:.7;">('+escapeHtml(ing.supplier_name)+')</span>' : ''}${ing.is_free ? ' <span style="opacity:.7;">(free)</span>':''}</span>
+        ${sel ? `<input type="number" step="any" class="usage-qty" data-ing="${ing.id}" placeholder="qty" value="${cur.qty}" style="width:64px;display:inline-block;padding:4px 6px;margin-left:4px;font-size:12px;">
+        <select class="usage-unit" data-ing="${ing.id}" style="width:62px;display:inline-block;padding:4px 4px;margin-left:2px;font-size:12px;">
+          ${UNIT_OPTIONS.map(u => `<option value="${u}" ${cur.unit===u?'selected':''}>${u}</option>`).join('')}
+        </select>` : ''}
+      </div>`;
+    }).join('');
+
+    box.querySelectorAll('[data-ing].chip').forEach(chip => {
       chip.onclick = () => {
         const id = chip.dataset.ing;
-        if(selectedSet.has(id)){ selectedSet.delete(id); chip.classList.remove('on'); }
-        else { selectedSet.add(id); chip.classList.add('on'); }
+        if(selectedMap.has(id)) selectedMap.delete(id);
+        else {
+          const ing = ingredientsCache.find(i => i.id === id);
+          selectedMap.set(id, {qty:'', unit: (ing && ing.unit) || 'g'});
+        }
+        renderChips();
+      };
+    });
+    box.querySelectorAll('.usage-qty').forEach(inp => {
+      inp.oninput = () => {
+        const cur = selectedMap.get(inp.dataset.ing) || {};
+        cur.qty = inp.value;
+        selectedMap.set(inp.dataset.ing, cur);
+      };
+    });
+    box.querySelectorAll('.usage-unit').forEach(sel => {
+      sel.onchange = () => {
+        const cur = selectedMap.get(sel.dataset.ing) || {};
+        cur.unit = sel.value;
+        selectedMap.set(sel.dataset.ing, cur);
       };
     });
   }
@@ -443,7 +482,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
         <td><input type="checkbox" class="ing-check" data-id="${ing.id}" ${selectedForDelete.has(ing.id)?'checked':''}></td>
         <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
         <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
-        <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${ing.price != null ? '$'+Number(ing.price).toFixed(2) : '<span style="color:var(--ink-soft);font-family:inherit;">—</span>'}</td>
+        <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${priceCellHtml(ing)}</td>
         <td>${allergenTagsHtml(ing.allergens)}</td>
         <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
         <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at)}</td>
@@ -697,7 +736,12 @@ function renderIngredientsView(){
         <select id="newIngDietCategory">
           ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}" ${reverifyTarget && (reverifyTarget.diet_category||'')===v ? 'selected':''}>${l}</option>`).join('')}
         </select>
+
         <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
+          <input type="checkbox" id="isFreeIngredient" style="width:auto;" ${reverifyTarget && reverifyTarget.is_free ? 'checked':''}> This ingredient is free (e.g. tap water) — don't track cost
+        </label>
+
+        <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;">
           <input type="checkbox" id="isSupplierProduct" style="width:auto;" ${reverifyTarget && reverifyTarget.supplier_id ? 'checked':''}> Is this a specific supplier's product?
         </label>
         <div id="supplierFields" style="display:${reverifyTarget && reverifyTarget.supplier_id ? 'block':'none'};margin-top:8px;">
@@ -711,15 +755,34 @@ function renderIngredientsView(){
             <option value="__new__">+ Add new supplier</option>
           </select>
           <input id="newSupplierName" placeholder="New supplier name" style="display:none;margin-top:6px;">
-          <label>Price (optional)</label>
-          <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 12.50" value="${reverifyTarget && reverifyTarget.price!=null ? reverifyTarget.price : ''}">
+          <div class="row-flex" style="gap:8px;margin-top:8px;">
+            <div style="flex:1;min-width:100px;">
+              <label>Package price</label>
+              <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 76.00" value="${reverifyTarget && reverifyTarget.price!=null ? reverifyTarget.price : ''}">
+            </div>
+            <div style="flex:1;min-width:80px;">
+              <label>Package size</label>
+              <input id="newIngPackageQty" type="number" step="any" placeholder="e.g. 20" value="${reverifyTarget && reverifyTarget.package_qty!=null ? reverifyTarget.package_qty : ''}">
+            </div>
+            <div style="flex:1;min-width:70px;">
+              <label>Unit</label>
+              <select id="newIngUnit">
+                ${UNIT_OPTIONS.map(u => `<option value="${u}" ${reverifyTarget && reverifyTarget.unit===u ? 'selected':''}>${u}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">e.g. price $76, size 20, unit kg = a 20kg bag costs $76</p>
         </div>
         <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">${reverifyTarget ? 'Save Re-verification' : 'Save this result'}</button>
       `;
 
+      const freeToggle = document.getElementById('isFreeIngredient');
       const toggle = document.getElementById('isSupplierProduct');
       const fields = document.getElementById('supplierFields');
       toggle.onchange = () => { fields.style.display = toggle.checked ? 'block' : 'none'; };
+      freeToggle.onchange = () => {
+        if(freeToggle.checked){ toggle.checked = false; fields.style.display = 'none'; }
+      };
 
       const codeInput = document.getElementById('newIngCode');
       codeInput.addEventListener('blur', async () => {
@@ -744,12 +807,16 @@ function renderIngredientsView(){
         const name = document.getElementById('newIngName').value.trim();
         if(!name){ alert('Please enter an ingredient name.'); return; }
         const dietCategory = document.getElementById('newIngDietCategory').value || null;
+        const isFree = freeToggle.checked;
 
-        let supplierId = null, productCode = null, price = null, supplierTouched = true;
-        if(toggle.checked){
+        let supplierId = null, productCode = null, price = null, unit = null, packageQty = null, supplierTouched = true;
+        if(toggle.checked && !isFree){
           productCode = document.getElementById('newIngCode').value.trim() || null;
           const priceVal = document.getElementById('newIngPrice').value;
           price = priceVal ? parseFloat(priceVal) : null;
+          const pkgVal = document.getElementById('newIngPackageQty').value;
+          packageQty = pkgVal ? parseFloat(pkgVal) : null;
+          unit = document.getElementById('newIngUnit').value || null;
           const supplierSelect = document.getElementById('newIngSupplier').value;
           if(supplierSelect === '__new__'){
             const newName = document.getElementById('newSupplierName').value.trim();
@@ -760,17 +827,18 @@ function renderIngredientsView(){
           } else if(supplierSelect){
             supplierId = supplierSelect;
           }
-        } else if(reverifyTarget){
-          // Re-verifying and the supplier checkbox is unchecked: leave supplier/code/price untouched.
+        } else if(reverifyTarget && !isFree){
+          // Re-verifying and the supplier checkbox is unchecked: leave supplier/code/price/unit untouched.
           supplierTouched = false;
         }
 
         const body = {
           name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
           overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
-          photoBase64: currentImageBase64, dietCategory,
+          photoBase64: currentImageBase64, dietCategory, isFree,
         };
-        if(supplierTouched){ body.supplierId = supplierId; body.productCode = productCode; body.price = price; }
+        if(isFree){ body.supplierId = null; body.productCode = null; body.price = null; body.unit = null; body.packageQty = null; }
+        else if(supplierTouched){ body.supplierId = supplierId; body.productCode = productCode; body.price = price; body.unit = unit; body.packageQty = packageQty; }
 
         try{
           if(reverifyTarget){
@@ -807,10 +875,21 @@ function renderSubRecipesView(){
         <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">A prep or sauce made from ingredients (e.g. "Curry Sauce"), not sold on its own — used inside one or more menu items.</p>
         <label>Sub-recipe name</label>
         <input id="newSrName" placeholder="e.g. Curry Sauce">
-        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">Ingredients used</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">Ingredients used (with quantity)</div>
         <input id="srIngSearch" placeholder="Search ingredients by name...">
         <div class="chip-grid" id="srSupplierFilterRow" style="margin-top:8px;"></div>
         <div class="ing-picker-box" id="srIngChips"></div>
+        <div class="row-flex" style="gap:8px;margin-top:10px;">
+          <div style="flex:1;min-width:100px;">
+            <label>Total yield</label>
+            <input id="srYieldQty" type="number" step="any" placeholder="e.g. 1.5">
+          </div>
+          <div style="flex:1;min-width:80px;">
+            <label>Unit</label>
+            <select id="srYieldUnit">${UNIT_OPTIONS.map(u=>`<option value="${u}">${u}</option>`).join('')}</select>
+          </div>
+        </div>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">How much this recipe makes in total, e.g. "1.5 kg" of sauce — used to work out cost per gram.</p>
         <button class="primary" style="width:100%;margin-top:14px;" id="saveSrBtn">Save Sub-Recipe</button>
       </div>
       <div class="col panel">
@@ -820,24 +899,31 @@ function renderSubRecipesView(){
     </div>
   `;
 
-  const selectedIngIds = new Set();
-  setupIngredientPicker({searchId:'srIngSearch', filterRowId:'srSupplierFilterRow', boxId:'srIngChips', selectedSet:selectedIngIds});
+  const selectedIngMap = new Map();
+  setupIngredientPicker({searchId:'srIngSearch', filterRowId:'srSupplierFilterRow', boxId:'srIngChips', selectedMap:selectedIngMap});
 
   document.getElementById('saveSrBtn').onclick = async () => {
     const name = document.getElementById('newSrName').value.trim();
     if(!name){ alert('Please enter a sub-recipe name.'); return; }
-    await api('/api/sub-recipes', {method:'POST', body: JSON.stringify({name, ingredientIds:[...selectedIngIds]})});
+    const ingredientUsages = [...selectedIngMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
+    const yieldQtyVal = document.getElementById('srYieldQty').value;
+    await api('/api/sub-recipes', {method:'POST', body: JSON.stringify({
+      name, ingredientUsages,
+      yieldQty: yieldQtyVal ? parseFloat(yieldQtyVal) : null,
+      yieldUnit: document.getElementById('srYieldUnit').value,
+    })});
     await loadSubRecipes();
     renderSubRecipesView();
   };
 
   const listEl = document.getElementById('srList');
   if(subRecipesCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>Sub-Recipe</th><th>Allergens</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>Sub-Recipe</th><th>Allergens</th><th>Cost</th><th></th></tr></thead><tbody>
       ${subRecipesCache.map(s => `
         <tr>
           <td><b>${escapeHtml(s.name)}</b></td>
           <td>${allergenTagsHtml(s.allergens)}</td>
+          <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${subRecipeCostHtml(s.costing)}</td>
           <td><button class="danger" data-del-sr="${s.id}">Delete</button></td>
         </tr>`).join('')}
     </tbody></table>`;
@@ -849,6 +935,31 @@ function renderSubRecipesView(){
       };
     });
   }
+}
+
+function subRecipeCostHtml(costing){
+  if(!costing || costing.costIncomplete) return '<span style="color:var(--ink-soft);font-family:inherit;">incomplete</span>';
+  return `$${costing.totalCost.toFixed(2)} total<br><span style="color:var(--ink-soft);">$${costing.unitCost.toFixed(4)}/${costing.unitFamily==='weight'?'g':costing.unitFamily==='volume'?'ml':'each'}</span>`;
+}
+
+function menuCostSummaryHtml(costing){
+  if(!costing || costing.costIncomplete) return 'cost: incomplete';
+  let s = `$${costing.foodCost.toFixed(2)}`;
+  if(costing.foodCostPercent != null) s += ` (${costing.foodCostPercent}%)`;
+  return s;
+}
+
+function menuCostDetailHtml(costing){
+  if(!costing) return '';
+  if(costing.costIncomplete){
+    const missing = (costing.missingCostItems||[]).length
+      ? `Missing cost data for: ${costing.missingCostItems.map(escapeHtml).join(', ')}.`
+      : `Add quantities/units to this menu\'s ingredients to compute cost.`;
+    return `<span style="color:var(--warn);">Food cost: incomplete.</span> <span style="color:var(--ink-soft);">${missing}</span>`;
+  }
+  let s = `<b>Food cost: $${costing.foodCost.toFixed(2)}</b>`;
+  if(costing.foodCostPercent != null) s += ` <span style="color:var(--ink-soft);">(${costing.foodCostPercent}% of selling price)</span>`;
+  return s;
 }
 
 // ---------- Menu ----------
@@ -865,6 +976,8 @@ function renderMenuView(){
         <h2 style="font-size:17px;margin-bottom:12px;">Create New Menu Item</h2>
         <label>Menu item name</label>
         <input id="newMenuName" placeholder="e.g. Chicken Katsu Curry">
+        <label>Selling price (optional, for food cost %)</label>
+        <input id="menuSellingPrice" type="number" step="0.01" placeholder="e.g. 18.00">
 
         <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">Sub-recipes used (e.g. sauces, preps)</div>
         <div id="menuSrChips">${subRecipesCache.length ? '' : '<span class="empty">No sub-recipes yet — optional.</span>'}</div>
@@ -883,27 +996,50 @@ function renderMenuView(){
     </div>
   `;
 
-  const selectedIngIds = new Set();
-  const selectedSrIds = new Set();
-  setupIngredientPicker({searchId:'ingSearchInput', filterRowId:'supplierFilterRow', boxId:'menuIngChips', selectedSet:selectedIngIds});
+  const selectedIngMap = new Map();
+  const selectedSrMap = new Map();
+  setupIngredientPicker({searchId:'ingSearchInput', filterRowId:'supplierFilterRow', boxId:'menuIngChips', selectedMap:selectedIngMap});
 
-  const srBox = document.getElementById('menuSrChips');
-  if(subRecipesCache.length){
-    srBox.innerHTML = subRecipesCache.map(s => `<span class="chip" data-sr="${s.id}">${escapeHtml(s.name)}</span>`).join('');
-    srBox.querySelectorAll('[data-sr]').forEach(chip => {
+  function renderSrPicker(){
+    const srBox = document.getElementById('menuSrChips');
+    if(!subRecipesCache.length) return;
+    srBox.innerHTML = subRecipesCache.map(s => {
+      const sel = selectedSrMap.has(s.id);
+      const cur = selectedSrMap.get(s.id) || {qty:'', unit:'g'};
+      return `<div style="margin:2px 0;">
+        <span class="chip ${sel?'on':''}" data-sr="${s.id}">${escapeHtml(s.name)}</span>
+        ${sel ? `<input type="number" step="any" class="sr-usage-qty" data-sr="${s.id}" placeholder="qty" value="${cur.qty}" style="width:64px;display:inline-block;padding:4px 6px;margin-left:4px;font-size:12px;">
+        <select class="sr-usage-unit" data-sr="${s.id}" style="width:62px;display:inline-block;padding:4px 4px;margin-left:2px;font-size:12px;">
+          ${UNIT_OPTIONS.map(u => `<option value="${u}" ${cur.unit===u?'selected':''}>${u}</option>`).join('')}
+        </select>` : ''}
+      </div>`;
+    }).join('');
+    srBox.querySelectorAll('[data-sr].chip').forEach(chip => {
       chip.onclick = () => {
         const id = chip.dataset.sr;
-        if(selectedSrIds.has(id)){ selectedSrIds.delete(id); chip.classList.remove('on'); }
-        else { selectedSrIds.add(id); chip.classList.add('on'); }
+        if(selectedSrMap.has(id)) selectedSrMap.delete(id);
+        else selectedSrMap.set(id, {qty:'', unit:'g'});
+        renderSrPicker();
       };
     });
+    srBox.querySelectorAll('.sr-usage-qty').forEach(inp => {
+      inp.oninput = () => { const cur = selectedSrMap.get(inp.dataset.sr)||{}; cur.qty = inp.value; selectedSrMap.set(inp.dataset.sr, cur); };
+    });
+    srBox.querySelectorAll('.sr-usage-unit').forEach(sel => {
+      sel.onchange = () => { const cur = selectedSrMap.get(sel.dataset.sr)||{}; cur.unit = sel.value; selectedSrMap.set(sel.dataset.sr, cur); };
+    });
   }
+  renderSrPicker();
 
   document.getElementById('saveMenuBtn').onclick = async () => {
     const name = document.getElementById('newMenuName').value.trim();
     if(!name){ alert('Please enter a menu item name.'); return; }
+    const sellingPriceVal = document.getElementById('menuSellingPrice').value;
+    const ingredientUsages = [...selectedIngMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
+    const subrecipeUsages = [...selectedSrMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
     await api('/api/menu-items', {method:'POST', body: JSON.stringify({
-      name, ingredientIds:[...selectedIngIds], subRecipeIds:[...selectedSrIds],
+      name, ingredientUsages, subrecipeUsages,
+      sellingPrice: sellingPriceVal ? parseFloat(sellingPriceVal) : null,
     })});
     await loadMenu();
     renderMenuView();
@@ -916,12 +1052,14 @@ function renderMenuView(){
         <summary>
           <span class="name">${escapeHtml(m.name)}</span>
           ${dotRowHtml(m.dietFlags, m.vegFlags)}
+          <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);flex-shrink:0;">${menuCostSummaryHtml(m.costing)}</span>
           <button class="danger" data-del-menu="${m.id}" style="margin-left:8px;flex-shrink:0;">Delete</button>
         </summary>
         <div class="item-detail">
           <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">Allergens</div>
           ${allergenTagsHtml(m.allergens)}
           <div style="margin-top:10px;">${dietBadgesHtml(m.dietFlags)}${vegBadgesHtml(m.vegFlags)}</div>
+          <div style="margin-top:10px;font-size:12.5px;">${menuCostDetailHtml(m.costing)}</div>
           <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">Updated by ${escapeHtml(m.updated_by_name||'')} · ${formatDate(m.updated_at)}</div>
         </div>
       </details>`).join('');
