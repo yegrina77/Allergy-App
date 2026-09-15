@@ -139,6 +139,24 @@ const GLOSSARY = [
     definition: 'Sulphites are preservatives added to stop food and drink from spoiling or browning. They don\'t cause a classic food allergy, but sensitive people — especially with asthma — can have breathing reactions.',
     examples: 'Wine, beer, cider, dried fruit (apricots, raisins, sultanas), pickled vegetables, some sausages and processed meats, vinegar, some cordials and soft drinks.',
   },
+  {
+    label: 'Coeliac Disease',
+    definition: 'Coeliac disease is not a typical allergy — it\'s an autoimmune condition. When someone with coeliac disease eats gluten, their immune system mistakenly attacks their own small intestine. There is no "safe small amount" — even trace, repeated exposure causes ongoing damage, even if the person doesn\'t feel sick straight away.',
+    examplesLabel: 'Why this matters in the kitchen:',
+    examples: 'Cross-contamination counts, not just ingredients. The same toaster, fryer oil, chopping board, or utensil used for gluten food can be enough — even with zero gluten ingredients in the dish itself.',
+  },
+  {
+    label: 'Anaphylaxis',
+    definition: 'Anaphylaxis is a severe, whole-body allergic reaction that can develop within minutes — swelling of the throat, difficulty breathing, and a dangerous drop in blood pressure. It is a medical emergency and can be life-threatening without immediate treatment (usually an adrenaline/EpiPen injection).',
+    examplesLabel: 'Why this matters in the kitchen:',
+    examples: 'Most often triggered by nuts and shellfish, but can happen with any allergen in a sensitive person. Even a small trace from shared equipment, oil, or utensils can be enough to trigger it — this is why we always disclose every allergen present, not just the obvious ones.',
+  },
+  {
+    label: 'Nightshade Allergy / Sensitivity',
+    definition: 'Nightshades are a plant family that includes tomatoes, potatoes, eggplant, capsicum/peppers, and chilli. Some people report sensitivity to them — sometimes linked to inflammatory conditions like arthritis — though this is not one of the officially regulated allergens under the NZ/AU Food Standards Code, and the scientific evidence is limited. If a guest says they avoid nightshades, take it just as seriously as any other dietary request — but note it isn\'t tracked as a registered allergen in this system the way Gluten, Dairy, Nut, and Shellfish are, so double-check ingredients directly with the kitchen.',
+    examplesLabel: 'Common nightshade foods:',
+    examples: 'Tomatoes (including tomato sauce, paste, and ketchup), potatoes (not sweet potatoes), eggplant/aubergine, capsicum/bell peppers, chilli peppers, paprika, cayenne pepper, some spice blends.',
+  },
 ];
 
 function renderGlossary(){
@@ -147,7 +165,7 @@ function renderGlossary(){
       <summary>${escapeHtml(g.label)}</summary>
       <div class="body">
         ${escapeHtml(g.definition)}<br><br>
-        <b>Common foods to look out for:</b> ${escapeHtml(g.examples)}
+        <b>${escapeHtml(g.examplesLabel || 'Common foods to look out for:')}</b> ${escapeHtml(g.examples)}
       </div>
     </details>
   `).join('');
