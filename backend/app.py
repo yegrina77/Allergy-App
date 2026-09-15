@@ -743,6 +743,9 @@ def create_ingredient(user):
         "supplier_name": None,
         "product_code": product_code,
         "price": data.get("price"),
+        "unit": data.get("unit") or None,
+        "package_qty": data.get("packageQty"),
+        "is_free": bool(data.get("isFree")),
         "diet_category": data.get("dietCategory") or None,
         "photo_base64": data.get("photoBase64"),
         "last_verified_at": now_iso() if data.get("photoBase64") else None,
@@ -789,6 +792,9 @@ def update_ingredient(user, ing_id):
         "supplier_id": data.get("supplierId", existing.get("supplier_id")),
         "product_code": product_code,
         "price": data.get("price", existing.get("price")),
+        "unit": data.get("unit", existing.get("unit")) or None,
+        "package_qty": data.get("packageQty", existing.get("package_qty")),
+        "is_free": bool(data.get("isFree", existing.get("is_free", False))),
         "diet_category": data.get("dietCategory", existing.get("diet_category")) or None,
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "updated_at": now_iso(),
@@ -846,6 +852,45 @@ def bulk_delete_ingredients(user):
 # ------------------------------------------------------------------
 # Allergen / diet computation shared by sub-recipes and menu items
 # ------------------------------------------------------------------
+UNIT_INFO = {
+    "g": ("weight", 1), "kg": ("weight", 1000),
+    "ml": ("volume", 1), "l": ("volume", 1000),
+    "each": ("count", 1),
+}
+
+
+def compute_usage_cost(ingredient, qty, usage_unit):
+    """Cost of using `qty` `usage_unit`s of this ingredient. None means the
+    ingredient doesn't have enough costing data yet (unit/package size/price
+    missing, or the usage unit's family doesn't match the ingredient's)."""
+    if ingredient.get("is_free"):
+        return 0.0
+    if qty is None:
+        return None
+    price = ingredient.get("price")
+    ing_unit = ingredient.get("unit")
+    package_qty = ingredient.get("package_qty")
+    if price is None or not ing_unit or not package_qty or not usage_unit:
+        return None
+    ing_fam, ing_mult = UNIT_INFO.get(ing_unit, (None, 1))
+    usage_fam, usage_mult = UNIT_INFO.get(usage_unit, (None, 1))
+    if ing_fam is None or usage_fam is None or ing_fam != usage_fam:
+        return None
+    package_base = package_qty * ing_mult
+    if package_base <= 0:
+        return None
+    return (price / package_base) * (qty * usage_mult)
+
+
+def extract_usage_ids(item, usage_key, legacy_key):
+    """Ingredient/sub-recipe ids referenced by a menu or sub-recipe, supporting
+    both the new {id, qty, unit} usage format and older plain id-list records."""
+    usages = item.get(usage_key)
+    if usages is not None:
+        return [u.get("id") for u in usages if u.get("id")]
+    return item.get(legacy_key, []) or []
+
+
 GLUTEN_SOURCES = {"Wheat", "Rye", "Barley", "Oats", "Spelt", "Triticale"}
 DAIRY_SOURCES = {"Milk"}
 NUT_SOURCES = {"Peanuts", "Almond", "Brazil Nut", "Cashew", "Hazelnut", "Macadamia", "Pecan", "Pine Nut", "Pistachio", "Walnut"}
@@ -857,21 +902,6 @@ DIET_FLAG_DEFS = [
     ("nut", NUT_SOURCES, "Nut Free"),
     ("shellfish", SHELLFISH_SOURCES, "Shellfish Free"),
 ]
-
-
-def gather_ingredients(ingredient_ids, subrecipe_ids):
-    """Collect the full set of ingredient records behind a menu item or sub-recipe,
-    following sub-recipes one level down (sub-recipes are made of ingredients only).
-    Batches all the needed Redis reads into as few round trips as possible."""
-    subrecipes = load_subrecipes_many(subrecipe_ids or [])
-    all_ing_ids = list(ingredient_ids or [])
-    for sr in subrecipes:
-        all_ing_ids.extend(sr.get("ingredient_ids", []))
-
-    seen = {}
-    for ing in load_ingredients_many(all_ing_ids):
-        seen[ing["id"]] = ing
-    return list(seen.values())
 
 
 def compute_allergens(ingredient_records):
@@ -930,56 +960,132 @@ def compute_veg_flags(ingredient_records):
     }
 
 
-def build_menu_response(m):
-    d = dict(m)
-    records = gather_ingredients(m.get("ingredient_ids", []), m.get("sub_recipe_ids", []))
-    allergens = compute_allergens(records)
-    d["allergens"] = allergens
-    d["dietFlags"] = compute_diet_flags(allergens, records)
-    d["vegFlags"] = compute_veg_flags(records)
-    return d
+def compute_subrecipe_costing(sr, ingredient_by_id):
+    total_cost = 0.0
+    incomplete = False
+    missing = []
+    for u in sr.get("ingredient_usages") or []:
+        ing = ingredient_by_id.get(u.get("id"))
+        if not ing:
+            incomplete = True
+            continue
+        cost = compute_usage_cost(ing, u.get("qty"), u.get("unit"))
+        if cost is None:
+            incomplete = True
+            missing.append(ing["name"])
+        else:
+            total_cost += cost
+
+    yield_qty = sr.get("yield_qty")
+    yield_unit = sr.get("yield_unit")
+    unit_cost = None
+    unit_family = None
+    if yield_qty and yield_unit and not incomplete:
+        fam, mult = UNIT_INFO.get(yield_unit, (None, 1))
+        unit_family = fam
+        base_qty = yield_qty * mult
+        if base_qty > 0:
+            unit_cost = total_cost / base_qty
+
+    return {
+        "totalCost": None if incomplete else round(total_cost, 4),
+        "unitCost": unit_cost,
+        "unitFamily": unit_family,
+        "costIncomplete": incomplete or not (yield_qty and yield_unit),
+        "missingCostItems": missing,
+    }
+
+
+def compute_menu_costing(m, ingredient_by_id, subrecipe_costing_by_id):
+    total_cost = 0.0
+    incomplete = False
+    missing = []
+    for u in m.get("ingredient_usages") or []:
+        ing = ingredient_by_id.get(u.get("id"))
+        if not ing:
+            incomplete = True
+            continue
+        cost = compute_usage_cost(ing, u.get("qty"), u.get("unit"))
+        if cost is None:
+            incomplete = True
+            missing.append(ing["name"])
+        else:
+            total_cost += cost
+
+    for u in m.get("subrecipe_usages") or []:
+        sc = subrecipe_costing_by_id.get(u.get("id"))
+        if not sc or sc.get("unitCost") is None:
+            incomplete = True
+            continue
+        usage_fam, mult = UNIT_INFO.get(u.get("unit"), (None, 1))
+        if usage_fam != sc.get("unitFamily") or u.get("qty") is None:
+            incomplete = True
+            continue
+        total_cost += sc["unitCost"] * (u.get("qty") * mult)
+
+    # A menu with no usages recorded at all (e.g. an older menu created before
+    # costing existed) has nothing to compute from — flag it rather than show $0.
+    if not (m.get("ingredient_usages") or m.get("subrecipe_usages")):
+        incomplete = True
+
+    result = {
+        "foodCost": None if incomplete else round(total_cost, 2),
+        "costIncomplete": incomplete,
+        "missingCostItems": missing,
+    }
+    selling_price = m.get("selling_price")
+    if selling_price and result["foodCost"] is not None and selling_price > 0:
+        result["foodCostPercent"] = round(result["foodCost"] / selling_price * 100, 1)
+    else:
+        result["foodCostPercent"] = None
+    return result
 
 
 def build_menu_responses_batch(items):
-    """Same result as calling build_menu_response() per item, but fetches every
-    sub-recipe and ingredient needed across ALL items in just two batched
-    requests total, instead of two requests PER menu item."""
+    """Fetches every sub-recipe and ingredient needed across ALL items in a
+    small, fixed number of batched requests, then computes allergens, diet
+    flags, and food costing for each menu item."""
     all_sr_ids = set()
     for m in items:
-        all_sr_ids.update(m.get("sub_recipe_ids", []) or [])
+        all_sr_ids.update(extract_usage_ids(m, "subrecipe_usages", "sub_recipe_ids"))
     subrecipe_by_id = {s["id"]: s for s in load_subrecipes_many(list(all_sr_ids))}
 
     all_ing_ids = set()
     for m in items:
-        all_ing_ids.update(m.get("ingredient_ids", []) or [])
+        all_ing_ids.update(extract_usage_ids(m, "ingredient_usages", "ingredient_ids"))
     for sr in subrecipe_by_id.values():
-        all_ing_ids.update(sr.get("ingredient_ids", []) or [])
+        all_ing_ids.update(extract_usage_ids(sr, "ingredient_usages", "ingredient_ids"))
     ingredient_by_id = {i["id"]: i for i in load_ingredients_many(list(all_ing_ids))}
 
-    def gather_from_cache(ingredient_ids, subrecipe_ids):
+    def gather_from_cache(item):
         seen = {}
-        for i in ingredient_ids or []:
+        for i in extract_usage_ids(item, "ingredient_usages", "ingredient_ids"):
             ing = ingredient_by_id.get(i)
             if ing:
                 seen[ing["id"]] = ing
-        for sid in subrecipe_ids or []:
+        for sid in extract_usage_ids(item, "subrecipe_usages", "sub_recipe_ids"):
             sr = subrecipe_by_id.get(sid)
             if not sr:
                 continue
-            for i in sr.get("ingredient_ids", []):
+            for i in extract_usage_ids(sr, "ingredient_usages", "ingredient_ids"):
                 ing = ingredient_by_id.get(i)
                 if ing:
                     seen[ing["id"]] = ing
         return list(seen.values())
 
+    subrecipe_costing_by_id = {
+        sr_id: compute_subrecipe_costing(sr, ingredient_by_id) for sr_id, sr in subrecipe_by_id.items()
+    }
+
     out = []
     for m in items:
         d = dict(m)
-        records = gather_from_cache(m.get("ingredient_ids", []), m.get("sub_recipe_ids", []))
+        records = gather_from_cache(m)
         allergens = compute_allergens(records)
         d["allergens"] = allergens
         d["dietFlags"] = compute_diet_flags(allergens, records)
         d["vegFlags"] = compute_veg_flags(records)
+        d["costing"] = compute_menu_costing(m, ingredient_by_id, subrecipe_costing_by_id)
         out.append(d)
     return out
 
@@ -997,14 +1103,16 @@ def list_sub_recipes(user):
 
     all_ing_ids = set()
     for s in items:
-        all_ing_ids.update(s.get("ingredient_ids", []) or [])
+        all_ing_ids.update(extract_usage_ids(s, "ingredient_usages", "ingredient_ids"))
     ingredient_by_id = {i["id"]: i for i in load_ingredients_many(list(all_ing_ids))}
 
     out = []
     for s in items:
         d = dict(s)
-        records = [ingredient_by_id[i] for i in s.get("ingredient_ids", []) if i in ingredient_by_id]
+        ids_for_allergens = extract_usage_ids(s, "ingredient_usages", "ingredient_ids")
+        records = [ingredient_by_id[i] for i in ids_for_allergens if i in ingredient_by_id]
         d["allergens"] = compute_allergens(records)
+        d["costing"] = compute_subrecipe_costing(s, ingredient_by_id)
         out.append(d)
     return jsonify({"subRecipes": out})
 
@@ -1019,7 +1127,9 @@ def create_sub_recipe(user):
     sr_id = new_id()
     sr = {
         "id": sr_id, "company_id": user["company_id"], "name": name,
-        "ingredient_ids": data.get("ingredientIds", []),
+        "ingredient_usages": data.get("ingredientUsages", []),
+        "yield_qty": data.get("yieldQty"),
+        "yield_unit": data.get("yieldUnit"),
         "created_by_id": user["id"], "created_by_name": user["name"],
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -1041,7 +1151,9 @@ def update_sub_recipe(user, sr_id):
     data = request.get_json(force=True)
     existing.update({
         "name": (data.get("name") or existing["name"]).strip(),
-        "ingredient_ids": data.get("ingredientIds", existing.get("ingredient_ids", [])),
+        "ingredient_usages": data.get("ingredientUsages", existing.get("ingredient_usages", [])),
+        "yield_qty": data.get("yieldQty", existing.get("yield_qty")),
+        "yield_unit": data.get("yieldUnit", existing.get("yield_unit")),
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "updated_at": now_iso(),
     })
@@ -1087,8 +1199,9 @@ def create_menu_item(user):
     menu_id = new_id()
     menu = {
         "id": menu_id, "company_id": user["company_id"], "name": name,
-        "ingredient_ids": data.get("ingredientIds", []),
-        "sub_recipe_ids": data.get("subRecipeIds", []),
+        "ingredient_usages": data.get("ingredientUsages", []),
+        "subrecipe_usages": data.get("subrecipeUsages", []),
+        "selling_price": data.get("sellingPrice"),
         "created_by_id": user["id"], "created_by_name": user["name"],
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -1111,8 +1224,9 @@ def update_menu_item(user, item_id):
     data = request.get_json(force=True)
     existing.update({
         "name": (data.get("name") or existing["name"]).strip(),
-        "ingredient_ids": data.get("ingredientIds", existing.get("ingredient_ids", [])),
-        "sub_recipe_ids": data.get("subRecipeIds", existing.get("sub_recipe_ids", [])),
+        "ingredient_usages": data.get("ingredientUsages", existing.get("ingredient_usages", [])),
+        "subrecipe_usages": data.get("subrecipeUsages", existing.get("subrecipe_usages", [])),
+        "selling_price": data.get("sellingPrice", existing.get("selling_price")),
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "updated_at": now_iso(),
     })
