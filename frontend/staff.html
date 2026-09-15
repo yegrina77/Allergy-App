@@ -146,12 +146,15 @@ function dietBadgesHtml(dietFlags, vegFlags){
   const badges = dietDefs.map(def => {
     const ok = dietFlags[def.key+'Free'];
     const culprits = dietFlags[def.key+'Culprits'] || [];
-    if(ok) return `<span class="tag" style="background:var(--accent-soft);color:var(--accent);">${def.label}</span>`;
-    const maxNames = 3;
-    let names = culprits.slice(0, maxNames).map(escapeHtml).join(', ');
-    if(culprits.length > maxNames) names += `, +${culprits.length - maxNames} more`;
-    const why = names ? ` (has: ${names})` : '';
-    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${def.label}${why}</span>`;
+    if(ok === true) return `<span class="tag" style="background:var(--accent-soft);color:var(--accent);">${def.label}</span>`;
+    if(ok === false){
+      const maxNames = 3;
+      let names = culprits.slice(0, maxNames).map(escapeHtml).join(', ');
+      if(culprits.length > maxNames) names += `, +${culprits.length - maxNames} more`;
+      const why = names ? ` (has: ${names})` : '';
+      return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${def.label}${why}</span>`;
+    }
+    return ''; // unverified ingredient present: omit rather than risk a false claim to customers
   }).join('');
 
   let vegBadges = '';

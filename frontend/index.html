@@ -301,12 +301,16 @@ function dietBadgesHtml(dietFlags){
   return DIET_FLAG_UI.map(def => {
     const ok = dietFlags[def.key+'Free'];
     const culprits = dietFlags[def.key+'Culprits'] || [];
-    if(ok) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${def.label}</span>`;
     const maxNames = 3;
     let names = culprits.slice(0, maxNames).map(escapeHtml).join(', ');
     if(culprits.length > maxNames) names += `, +${culprits.length - maxNames} more`;
-    const why = names ? ` (has: ${names})` : '';
-    return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${def.label}${why}</span>`;
+    if(ok === true) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${def.label}</span>`;
+    if(ok === false){
+      const why = names ? ` (has: ${names})` : '';
+      return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${def.label}${why}</span>`;
+    }
+    const why = names ? ` (unverified: ${names})` : '';
+    return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">${def.label}: unverified${why}</span>`;
   }).join('');
 }
 
@@ -344,7 +348,7 @@ function dotRowHtml(dietFlags, vegFlags){
 }
 
 function verifiedBadgeHtml(lastVerifiedAt){
-  if(!lastVerifiedAt) return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">Unknown</span>`;
+  if(!lastVerifiedAt) return `<span class="tag" style="background:var(--warn-soft);color:var(--warn);">Photo needed</span>`;
   const days = Math.floor((Date.now() - new Date(lastVerifiedAt).getTime()) / (1000*60*60*24));
   const dateStr = formatDate(lastVerifiedAt);
   if(days > RECHECK_DUE_DAYS){
@@ -472,6 +476,15 @@ function renderIngredientsView(){
         <button class="primary" style="width:100%;margin-top:10px;" id="analyzeBtn" disabled>Analyze with AI</button>
         <div id="analyzeStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
         <div id="analyzeResult"></div>
+        ${!reverifyTarget ? `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+          <button class="ghost" id="noPhotoToggleBtn" style="font-size:12.5px;">No photo yet? Register the name now, add a photo later</button>
+          <div id="noPhotoForm" style="display:none;margin-top:10px;">
+            <label>Ingredient name</label>
+            <input id="noPhotoName" placeholder="e.g. Curry Roux Hot">
+            <button class="primary" style="width:100%;margin-top:10px;" id="noPhotoSaveBtn">Save without photo</button>
+          </div>
+        </div>` : ''}
       </div>
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">Registered Ingredients (${ingredientsCache.length})</h2>
@@ -497,6 +510,23 @@ function renderIngredientsView(){
 
   const cancelBtn = document.getElementById('cancelReverifyBtn');
   if(cancelBtn) cancelBtn.onclick = () => { reverifyTarget = null; renderIngredientsView(); };
+
+  const noPhotoToggleBtn = document.getElementById('noPhotoToggleBtn');
+  if(noPhotoToggleBtn){
+    noPhotoToggleBtn.onclick = () => {
+      const form = document.getElementById('noPhotoForm');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    };
+    document.getElementById('noPhotoSaveBtn').onclick = async () => {
+      const name = document.getElementById('noPhotoName').value.trim();
+      if(!name){ alert('Please enter an ingredient name.'); return; }
+      try{
+        await api('/api/ingredients', {method:'POST', body: JSON.stringify({name, allergens: []})});
+      }catch(e){ alert(e.message); return; }
+      await loadIngredients();
+      renderIngredientsView();
+    };
+  }
 
   dz.onclick = () => fileInput.click();
   dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); };
