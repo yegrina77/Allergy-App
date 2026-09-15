@@ -564,7 +564,7 @@ def create_ingredient(user):
         "price": data.get("price"),
         "diet_category": data.get("dietCategory") or None,
         "photo_base64": data.get("photoBase64"),
-        "last_verified_at": now_iso(),
+        "last_verified_at": now_iso() if data.get("photoBase64") else None,
         "created_by_id": user["id"], "created_by_name": user["name"],
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -691,15 +691,24 @@ def compute_allergens(ingredient_records):
     return out
 
 
-def compute_diet_flags(allergens_list):
+def compute_diet_flags(allergens_list, ingredient_records=None):
     def norm(s):
         return (s or "").strip().lower()
+    has_unverified = bool(ingredient_records) and any(not r.get("last_verified_at") for r in ingredient_records)
+    unverified_names = sorted({r["name"] for r in (ingredient_records or []) if not r.get("last_verified_at")})
+
     result = {}
     for key, sources, _label in DIET_FLAG_DEFS:
         norm_sources = {norm(x) for x in sources}
         hits = [a for a in allergens_list if norm(a.get("name")) in norm_sources]
         culprits = sorted({ing for a in hits for ing in a.get("ingredients", [])})
-        result[f"{key}Free"] = len(hits) == 0
+        if hits:
+            result[f"{key}Free"] = False  # a confirmed allergen is real regardless of what else is unverified
+        elif has_unverified:
+            result[f"{key}Free"] = None
+            culprits = unverified_names
+        else:
+            result[f"{key}Free"] = True
         result[f"{key}Culprits"] = culprits
     return result
 
@@ -726,7 +735,7 @@ def build_menu_response(m):
     records = gather_ingredients(m.get("ingredient_ids", []), m.get("sub_recipe_ids", []))
     allergens = compute_allergens(records)
     d["allergens"] = allergens
-    d["dietFlags"] = compute_diet_flags(allergens)
+    d["dietFlags"] = compute_diet_flags(allergens, records)
     d["vegFlags"] = compute_veg_flags(records)
     return d
 
