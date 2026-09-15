@@ -1,10 +1,13 @@
 import os
 import json
 import secrets
+import base64
+from io import BytesIO
 from datetime import datetime, timezone
 from functools import wraps
 
 import requests
+import openpyxl
 from flask import Flask, request, jsonify, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from upstash_redis import Redis
@@ -491,6 +494,113 @@ def create_supplier(user):
     ids.append(supplier_id)
     _raw_set(f"allergy_supplier_ids:{user['company_id']}", ids)
     return jsonify({"supplier": supplier})
+
+
+@app.route("/api/ingredients/bulk-import", methods=["POST"])
+@login_required()
+def bulk_import_ingredients(user):
+    """Import a supplier's product list (code, name, price) from a spreadsheet.
+    Every row is created WITHOUT a photo or allergens — flagged unverified — so
+    diet/allergen claims never assume something that hasn't actually been checked."""
+    data = request.get_json(force=True)
+    file_b64 = data.get("fileBase64")
+    supplier_name = (data.get("supplierName") or "").strip()
+    if not file_b64 or not supplier_name:
+        return jsonify({"error": "A spreadsheet file and a supplier name are both required."}), 400
+
+    try:
+        file_bytes = base64.b64decode(file_b64)
+        wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except Exception as e:
+        return jsonify({"error": f"Could not read the spreadsheet: {e}"}), 400
+
+    rows = [r for r in rows if r and any(c is not None for c in r)]
+    if not rows:
+        return jsonify({"error": "The spreadsheet appears to be empty."}), 400
+
+    # Detect code/name/price columns from the header row; fall back to column order.
+    header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+    code_col = name_col = price_col = None
+    for idx, h in enumerate(header):
+        if "code" in h:
+            code_col = idx
+        elif "price" in h:
+            price_col = idx
+        elif name_col is None and h:
+            name_col = idx
+    if code_col is None and name_col is None and price_col is None:
+        code_col, name_col, price_col = 0, 1, 2
+    data_rows = rows[1:]
+
+    # Find or create the supplier
+    supplier_id = None
+    for i in list_supplier_ids(user["company_id"]):
+        s = load_supplier(i)
+        if s and s["name"].strip().lower() == supplier_name.lower():
+            supplier_id = s["id"]
+            supplier_name = s["name"]  # use the existing casing
+            break
+    if not supplier_id:
+        supplier_id = new_id()
+        _raw_set(f"allergy_supplier:{supplier_id}", {
+            "id": supplier_id, "company_id": user["company_id"], "name": supplier_name, "created_at": now_iso(),
+        })
+        sids = list_supplier_ids(user["company_id"])
+        sids.append(supplier_id)
+        _raw_set(f"allergy_supplier_ids:{user['company_id']}", sids)
+
+    existing_codes = {}
+    ing_ids = list_ingredient_ids(user["company_id"])
+    for i in ing_ids:
+        ing = load_ingredient(i)
+        if ing and ing.get("product_code"):
+            existing_codes[ing["product_code"]] = ing["name"]
+
+    created, skipped = [], []
+    for r in data_rows:
+        code = str(r[code_col]).strip() if code_col is not None and code_col < len(r) and r[code_col] is not None else None
+        name = str(r[name_col]).strip() if name_col is not None and name_col < len(r) and r[name_col] is not None else None
+        price = None
+        if price_col is not None and price_col < len(r) and r[price_col] is not None:
+            try:
+                price = float(r[price_col])
+            except (ValueError, TypeError):
+                price = None
+        if not name:
+            continue
+        if code and code in existing_codes:
+            skipped.append({"code": code, "name": name, "reason": f"Product code already registered as \"{existing_codes[code]}\""})
+            continue
+
+        ing_id = new_id()
+        ingredient = {
+            "id": ing_id, "company_id": user["company_id"], "name": name,
+            "raw_text": "", "allergens": [], "overall_confidence": "",
+            "notes": "Imported from spreadsheet — no label photo yet, allergens not verified.",
+            "supplier_id": supplier_id, "supplier_name": supplier_name,
+            "product_code": code, "price": price, "diet_category": None,
+            "photo_base64": None, "last_verified_at": None,
+            "created_by_id": user["id"], "created_by_name": user["name"],
+            "updated_by_id": user["id"], "updated_by_name": user["name"],
+            "created_at": now_iso(), "updated_at": now_iso(),
+        }
+        _raw_set(f"allergy_ingredient:{ing_id}", ingredient)
+        ing_ids.append(ing_id)
+        if code:
+            existing_codes[code] = name
+        created.append({"code": code, "name": name, "price": price})
+
+    _raw_set(f"allergy_ingredient_ids:{user['company_id']}", ing_ids)
+    if created:
+        log_action(user["company_id"], user, "created", "bulk_import", f"{len(created)} ingredients from {supplier_name}")
+
+    return jsonify({
+        "supplierName": supplier_name,
+        "createdCount": len(created), "skippedCount": len(skipped),
+        "created": created, "skipped": skipped,
+    })
 
 
 # ------------------------------------------------------------------
