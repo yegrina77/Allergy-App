@@ -356,7 +356,8 @@ function dotRowHtml(dietFlags, vegFlags){
   }).join('')}</span>`;
 }
 
-function verifiedBadgeHtml(lastVerifiedAt){
+function verifiedBadgeHtml(lastVerifiedAt, isFree){
+  if(isFree) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">No label needed</span>`;
   if(!lastVerifiedAt) return `<span class="tag" style="background:var(--warn-soft);color:var(--warn);">Photo needed</span>`;
   const days = Math.floor((Date.now() - new Date(lastVerifiedAt).getTime()) / (1000*60*60*24));
   const dateStr = formatDate(lastVerifiedAt);
@@ -485,7 +486,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
         <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${priceCellHtml(ing)}</td>
         <td>${allergenTagsHtml(ing.allergens)}</td>
         <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
-        <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at)}</td>
+        <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at, ing.is_free)}</td>
         <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">Re-verify</button> <button class="danger" data-del-ing="${ing.id}">Delete</button></td>
       </tr>`).join('')}
   </tbody></table>`;
@@ -579,11 +580,20 @@ function renderIngredientsView(){
         <div id="analyzeResult"></div>
         ${!reverifyTarget ? `
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-          <button class="ghost" id="noPhotoToggleBtn" style="font-size:12.5px;">No photo yet? Register the name now, add a photo later</button>
+          <button class="ghost" id="noPhotoToggleBtn" style="font-size:12.5px;">No label to photograph? (free items like tap water, or add a photo later)</button>
           <div id="noPhotoForm" style="display:none;margin-top:10px;">
             <label>Ingredient name</label>
-            <input id="noPhotoName" placeholder="e.g. Curry Roux Hot">
-            <button class="primary" style="width:100%;margin-top:10px;" id="noPhotoSaveBtn">Save without photo</button>
+            <input id="noPhotoName" placeholder="e.g. Water, or Curry Roux Hot">
+            <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;">
+              <input type="checkbox" id="noPhotoIsFree" style="width:auto;"> This ingredient is free (e.g. tap water) — no cost, no allergens
+            </label>
+            <div id="noPhotoDietRow" style="margin-top:8px;">
+              <label>Diet category (for Vegetarian/Vegan)</label>
+              <select id="noPhotoDietCategory">
+                ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
+              </select>
+            </div>
+            <button class="primary" style="width:100%;margin-top:10px;" id="noPhotoSaveBtn">Save</button>
           </div>
         </div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
@@ -631,11 +641,16 @@ function renderIngredientsView(){
       const form = document.getElementById('noPhotoForm');
       form.style.display = form.style.display === 'none' ? 'block' : 'none';
     };
+    const noPhotoIsFree = document.getElementById('noPhotoIsFree');
+    const noPhotoDietRow = document.getElementById('noPhotoDietRow');
+    noPhotoIsFree.onchange = () => { noPhotoDietRow.style.display = 'block'; }; // diet category still useful even when free
     document.getElementById('noPhotoSaveBtn').onclick = async () => {
       const name = document.getElementById('noPhotoName').value.trim();
       if(!name){ alert('Please enter an ingredient name.'); return; }
+      const isFree = noPhotoIsFree.checked;
+      const dietCategory = document.getElementById('noPhotoDietCategory').value || null;
       try{
-        await api('/api/ingredients', {method:'POST', body: JSON.stringify({name, allergens: []})});
+        await api('/api/ingredients', {method:'POST', body: JSON.stringify({name, allergens: [], isFree, dietCategory})});
       }catch(e){ alert(e.message); return; }
       await loadIngredients();
       renderIngredientsView();
