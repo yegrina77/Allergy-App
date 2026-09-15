@@ -890,7 +890,10 @@ function renderSubRecipesView(){
           </div>
         </div>
         <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">How much this recipe makes in total, e.g. "1.5 kg" of sauce — used to work out cost per gram.</p>
-        <button class="primary" style="width:100%;margin-top:14px;" id="saveSrBtn">Save Sub-Recipe</button>
+        <div class="row-flex" style="gap:8px;margin-top:14px;">
+          <button class="primary" style="flex:1;" id="saveSrBtn">Save Sub-Recipe</button>
+          <button class="ghost" id="cancelSrBtn">Cancel</button>
+        </div>
       </div>
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">Registered Sub-Recipes (${subRecipesCache.length})</h2>
@@ -901,6 +904,8 @@ function renderSubRecipesView(){
 
   const selectedIngMap = new Map();
   setupIngredientPicker({searchId:'srIngSearch', filterRowId:'srSupplierFilterRow', boxId:'srIngChips', selectedMap:selectedIngMap});
+
+  document.getElementById('cancelSrBtn').onclick = () => renderSubRecipesView();
 
   document.getElementById('saveSrBtn').onclick = async () => {
     const name = document.getElementById('newSrName').value.trim();
@@ -987,7 +992,10 @@ function renderMenuView(){
         <div class="chip-grid" id="supplierFilterRow" style="margin-top:8px;"></div>
         <div class="ing-picker-box" id="menuIngChips"></div>
 
-        <button class="primary" style="width:100%;margin-top:14px;" id="saveMenuBtn">Save Menu Item</button>
+        <div class="row-flex" style="gap:8px;margin-top:14px;">
+          <button class="primary" style="flex:1;" id="saveMenuBtn">Save Menu Item</button>
+          <button class="ghost" id="cancelMenuBtn">Cancel</button>
+        </div>
       </div>
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">Registered Menu Items (${menuCache.length})</h2>
@@ -1030,6 +1038,8 @@ function renderMenuView(){
     });
   }
   renderSrPicker();
+
+  document.getElementById('cancelMenuBtn').onclick = () => renderMenuView();
 
   document.getElementById('saveMenuBtn').onclick = async () => {
     const name = document.getElementById('newMenuName').value.trim();
