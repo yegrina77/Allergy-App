@@ -26,13 +26,13 @@ def analyze_invoice(user):
 
 First, read the supplier/issuing company's name as printed on the letterhead or header of the invoice (not the buyer's name) — put this in "supplierName" (null if you cannot find one).
 
-Then extract every line item you can read: its product code (SKU/item code as printed), the product name as printed, and the price shown for that line (state whether it is a unit price or a line/extended total in "priceType"). If a field is unreadable or not shown, use null for that field. Never invent values that are not visible in the photo.
+Then extract every line item you can read: its product code (SKU/item code as printed), the product name as printed, the quantity ordered (the number of units/cases/bags, as printed — not the weight inside a package), the unit price (price per single unit, if shown), and the line total (the extended/total price for that line, if shown). If a field is unreadable or not shown, use null for that field — do not invent or calculate values that are not visible in the photo, just report what is printed.
 
 Respond ONLY in this JSON format, no markdown, no explanation:
 {
   "supplierName": "issuing company name as printed, or null",
   "items": [
-    {"productCode": "code as printed or null", "productName": "name as printed", "price": number or null, "priceType": "unit" | "line" | "unknown"}
+    {"productCode": "code as printed or null", "productName": "name as printed", "quantity": number or null, "unitPrice": number or null, "lineTotal": number or null}
   ]
 }"""
 
@@ -86,11 +86,20 @@ Respond ONLY in this JSON format, no markdown, no explanation:
     for item in parsed.get("items", []):
         code = item.get("productCode")
         match = by_code.get(code) if code else None
-        invoice_price = item.get("price")
+
+        qty = item.get("quantity")
+        unit_price = item.get("unitPrice")
+        line_total = item.get("lineTotal")
+        # Fill in whichever of qty/unitPrice/lineTotal is missing, if the other two are known.
+        if line_total is None and qty is not None and unit_price is not None:
+            line_total = round(qty * unit_price, 2)
+        elif unit_price is None and qty and line_total is not None:
+            unit_price = round(line_total / qty, 4)
+
         current_price = match.get("price") if match else None
         price_changed = bool(
-            match and invoice_price is not None and current_price is not None
-            and abs(float(current_price) - float(invoice_price)) > 0.001
+            match and unit_price is not None and current_price is not None
+            and abs(float(current_price) - float(unit_price)) > 0.001
         )
         registered_supplier_name = match.get("supplier_name") if match else None
         supplier_mismatch = bool(
@@ -100,8 +109,9 @@ Respond ONLY in this JSON format, no markdown, no explanation:
         results.append({
             "productCode": code,
             "invoiceName": item.get("productName"),
-            "invoicePrice": invoice_price,
-            "priceType": item.get("priceType"),
+            "quantity": qty,
+            "unitPrice": unit_price,
+            "lineTotal": line_total,
             "matchedIngredientId": match["id"] if match else None,
             "matchedName": match["name"] if match else None,
             "currentPrice": current_price,

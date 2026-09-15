@@ -6,6 +6,7 @@ import auth
 import ingredients
 import suppliers
 import invoices
+import purchases
 import subrecipes
 import menu
 import audit
@@ -24,6 +25,7 @@ app.register_blueprint(auth.bp)
 app.register_blueprint(ingredients.bp)
 app.register_blueprint(suppliers.bp)
 app.register_blueprint(invoices.bp)
+app.register_blueprint(purchases.bp)
 app.register_blueprint(subrecipes.bp)
 app.register_blueprint(menu.bp)
 app.register_blueprint(audit.bp)
