@@ -484,6 +484,19 @@ function renderIngredientsView(){
             <input id="noPhotoName" placeholder="e.g. Curry Roux Hot">
             <button class="primary" style="width:100%;margin-top:10px;" id="noPhotoSaveBtn">Save without photo</button>
           </div>
+        </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+          <button class="ghost" id="bulkImportToggleBtn" style="font-size:12.5px;">Import a supplier's product list from a spreadsheet</button>
+          <div id="bulkImportForm" style="display:none;margin-top:10px;">
+            <p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px;">Expects columns for product code, product name, and price. Every row is registered without a photo — flagged "Photo needed" until you re-verify each one.</p>
+            <label>Supplier name</label>
+            <input id="bulkSupplierName" placeholder="e.g. TokyoFood">
+            <label>Spreadsheet file (.xlsx)</label>
+            <input type="file" id="bulkFileInput" accept=".xlsx">
+            <button class="primary" style="width:100%;margin-top:10px;" id="bulkImportBtn" disabled>Import</button>
+            <div id="bulkImportStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
+            <div id="bulkImportResult" style="margin-top:10px;"></div>
+          </div>
         </div>` : ''}
       </div>
       <div class="col panel">
@@ -525,6 +538,56 @@ function renderIngredientsView(){
       }catch(e){ alert(e.message); return; }
       await loadIngredients();
       renderIngredientsView();
+    };
+  }
+
+  const bulkImportToggleBtn = document.getElementById('bulkImportToggleBtn');
+  if(bulkImportToggleBtn){
+    bulkImportToggleBtn.onclick = () => {
+      const form = document.getElementById('bulkImportForm');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    };
+    let bulkFileBase64 = null;
+    const bulkFileInput = document.getElementById('bulkFileInput');
+    const bulkImportBtn = document.getElementById('bulkImportBtn');
+    bulkFileInput.onchange = () => {
+      const file = bulkFileInput.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        bulkFileBase64 = e.target.result.split(',')[1];
+        bulkImportBtn.disabled = false;
+      };
+      reader.readAsDataURL(file);
+    };
+    bulkImportBtn.onclick = async () => {
+      const supplierName = document.getElementById('bulkSupplierName').value.trim();
+      if(!supplierName){ alert('Please enter a supplier name.'); return; }
+      if(!bulkFileBase64){ alert('Please choose a spreadsheet file.'); return; }
+      bulkImportBtn.disabled = true;
+      document.getElementById('bulkImportStatus').innerHTML = '<span class="spinner"></span> Importing...';
+      document.getElementById('bulkImportResult').innerHTML = '';
+      try{
+        const res = await api('/api/ingredients/bulk-import', {method:'POST', body: JSON.stringify({
+          fileBase64: bulkFileBase64, supplierName,
+        })});
+        document.getElementById('bulkImportStatus').textContent = '';
+        const skippedList = res.skipped.length
+          ? `<details class="more-toggle"><summary>${res.skipped.length} skipped (already registered)</summary>${res.skipped.map(s => `<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">${escapeHtml(s.code||'')} — ${escapeHtml(s.name)}: ${escapeHtml(s.reason)}</div>`).join('')}</details>`
+          : '';
+        document.getElementById('bulkImportResult').innerHTML = `
+          <div style="color:var(--safe);font-size:13.5px;">Imported ${res.createdCount} ingredients from ${escapeHtml(res.supplierName)}.</div>
+          ${skippedList}
+        `;
+        await loadSuppliers();
+        await loadIngredients();
+        renderIngredientTable('', '');
+      }catch(e){
+        document.getElementById('bulkImportStatus').textContent = '';
+        document.getElementById('bulkImportResult').innerHTML = `<div class="error-box" style="display:block;">${escapeHtml(e.message)}</div>`;
+      }finally{
+        bulkImportBtn.disabled = false;
+      }
     };
   }
 
