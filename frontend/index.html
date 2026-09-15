@@ -8,46 +8,58 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#F5F6F1;--panel:#FFFFFF;--ink:#1E2A26;--ink-soft:#55635C;--border:#DBDFD3;
-    --accent:#2F6F5E;--accent-soft:#E4EEE9;--warn:#B5501B;--warn-soft:#F7E9DE;
-    --safe:#3D7A4D;--safe-soft:#E7F1E8;--danger:#A32B2B;--danger-soft:#F8E3E1;
-    --neutral:#7A7368;--neutral-soft:#EFEDE7;
+    --bg:#15120F;--bg-glow:radial-gradient(ellipse 900px 500px at 15% -10%, rgba(127,168,201,0.09), transparent 60%),
+                 radial-gradient(ellipse 700px 500px at 100% 0%, rgba(201,154,82,0.06), transparent 55%);
+    --panel:rgba(243,238,228,0.035);--ink:#F3EEE4;--ink-soft:#A79E8F;--border:rgba(243,238,228,0.12);
+    --accent:#7FA8C9;--accent-soft:rgba(127,168,201,0.14);--warn:#C99A52;--warn-soft:rgba(201,154,82,0.14);
+    --safe:#6FA37D;--safe-soft:rgba(111,163,125,0.14);--danger:#C97064;--danger-soft:rgba(201,112,100,0.14);
+    --neutral:#8A8378;--neutral-soft:rgba(138,131,120,0.14);
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.5;}
+  body{
+    margin:0;background-color:var(--bg);background-image:var(--bg-glow);
+    color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.5;min-height:100vh;
+  }
   .wrap{max-width:1150px;margin:0 auto;padding:28px 20px 80px;}
   h1,h2{font-family:'Newsreader',serif;font-weight:600;margin:0;}
   a{color:var(--accent);}
   input,select{
     width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:6px;
-    font-family:inherit;font-size:14px;background:#fff;
+    font-family:inherit;font-size:14px;background:rgba(243,238,228,0.04);color:var(--ink);
   }
+  input::placeholder{color:#6B655B;}
+  input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   label{font-size:12.5px;color:var(--ink-soft);display:block;margin:10px 0 4px;}
   button{font-family:inherit;cursor:pointer;}
   button.primary{
-    background:var(--accent);color:#fff;border:none;padding:10px 16px;border-radius:7px;
-    font-size:14px;font-weight:600;
+    background:var(--accent);color:#141210;border:none;padding:10px 16px;border-radius:7px;
+    font-size:14px;font-weight:600;transition:box-shadow .15s, opacity .15s;
   }
-  button.primary:disabled{opacity:.45;cursor:not-allowed;}
+  button.primary:hover:not(:disabled){box-shadow:0 0 0 4px var(--accent-soft);}
+  button.primary:disabled{opacity:.35;cursor:not-allowed;}
   button.ghost{background:none;border:1px solid var(--border);padding:8px 13px;border-radius:7px;font-size:13px;color:var(--ink);}
   button.ghost:hover{border-color:var(--accent);color:var(--accent);}
   button.danger{background:none;border:1px solid var(--danger);color:var(--danger);padding:6px 11px;border-radius:6px;font-size:12.5px;}
-  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:22px;margin-bottom:18px;}
+  .panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:18px;
+    backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,0.35);
+  }
   .center-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
-  .auth-card{max-width:380px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px;}
-  .auth-card .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent);}
+  .auth-card{max-width:380px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:32px;backdrop-filter:blur(14px);box-shadow:0 20px 60px rgba(0,0,0,0.45);}
+  .auth-card .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent);letter-spacing:.04em;}
   .error-box{background:var(--danger-soft);color:var(--danger);padding:9px 12px;border-radius:6px;font-size:13px;margin-top:10px;display:none;}
   .tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
-  .tab{padding:8px 14px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:13.5px;color:var(--ink-soft);}
-  .tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
-  header.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:10px;}
-  .who{font-size:13px;color:var(--ink-soft);}
+  .tab{padding:8px 14px;border-radius:7px;border:1px solid var(--border);background:rgba(243,238,228,0.03);font-size:13.5px;color:var(--ink-soft);}
+  .tab.active{background:var(--accent);border-color:var(--accent);color:#141210;}
+  header.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;flex-wrap:wrap;gap:10px;}
+  .who{font-size:13px;color:var(--ink-soft);text-align:right;}
   .who b{color:var(--ink);}
+  .clock{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft);letter-spacing:.03em;margin-bottom:6px;}
   table{width:100%;border-collapse:collapse;font-size:13.5px;}
-  th{text-align:left;font-size:11px;text-transform:uppercase;color:var(--ink-soft);padding:6px 8px;border-bottom:1px solid var(--border);}
-  td{padding:9px 8px;border-bottom:1px solid #EEF0E9;vertical-align:top;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);padding:6px 8px;border-bottom:1px solid var(--border);}
+  td{padding:9px 8px;border-bottom:1px solid rgba(243,238,228,0.06);vertical-align:top;}
   .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:16px;font-size:12px;font-weight:500;background:var(--warn-soft);color:var(--warn);margin:2px 3px 2px 0;}
-  .tag.low{background:#FBF3E2;color:#8A6417;}
+  .tag.low{background:var(--neutral-soft);color:var(--neutral);}
   .more-toggle{display:inline-block;}
   .more-toggle summary{list-style:none;font-size:11.5px;color:var(--ink-soft);cursor:pointer;}
   .more-toggle summary::-webkit-details-marker{display:none;}
@@ -55,18 +67,18 @@
   .dropzone.drag,.dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
   input[type=file]{display:none;}
   .preview{margin-top:10px;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:none;}
-  .preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#F0F1EB;}
+  .preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#0F0D0A;}
   .spinner{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:-2px;}
   @keyframes spin{to{transform:rotate(360deg);}}
   .row-flex{display:flex;gap:16px;flex-wrap:wrap;}
   .col{flex:1;min-width:280px;}
-  .chip{display:inline-block;padding:5px 11px;border-radius:6px;border:1px solid var(--border);background:#fff;font-size:12.5px;cursor:pointer;margin:3px 4px 3px 0;color:var(--ink-soft);}
-  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .chip{display:inline-block;padding:5px 11px;border-radius:6px;border:1px solid var(--border);background:rgba(243,238,228,0.03);font-size:12.5px;cursor:pointer;margin:3px 4px 3px 0;color:var(--ink-soft);}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#141210;}
   .chip.filter{border-radius:20px;}
-  .chip.filter.on{background:var(--ink);border-color:var(--ink);}
+  .chip.filter.on{background:var(--ink);border-color:var(--ink);color:#141210;}
   .empty{color:var(--ink-soft);font-size:13.5px;padding:20px 0;text-align:center;}
   .staff-link-box{background:var(--accent-soft);border-radius:8px;padding:14px 16px;font-size:13px;margin-top:14px;}
-  .staff-link-box code{font-family:'IBM Plex Mono',monospace;background:#fff;padding:2px 6px;border-radius:4px;}
+  .staff-link-box code{font-family:'IBM Plex Mono',monospace;background:rgba(0,0,0,0.25);padding:2px 6px;border-radius:4px;color:var(--ink);}
   .ing-picker-box{border:1px solid var(--border);border-radius:8px;padding:12px;max-height:260px;overflow-y:auto;margin-top:8px;}
 </style>
 </head>
@@ -111,6 +123,7 @@
       <h1 style="font-size:24px;">Allergy Manager</h1>
     </div>
     <div class="who">
+      <div class="clock" id="clockDisplay"></div>
       <b id="whoName"></b> · <span id="whoRole"></span>
       &nbsp;·&nbsp;<button class="ghost" id="logoutBtn" style="padding:5px 10px;font-size:12px;">Log out</button>
     </div>
@@ -372,12 +385,14 @@ async function loadIngredients(){
   ingredientsCache = d.ingredients;
 }
 
-function renderIngredientTable(query){
+function renderIngredientTable(nameQuery, supplierQuery){
   const listEl = document.getElementById('ingredientList');
   if(!listEl) return;
-  const q = (query||'').trim().toLowerCase();
+  const nq = (nameQuery||'').trim().toLowerCase();
+  const sq = (supplierQuery||'').trim().toLowerCase();
   const filtered = ingredientsCache.filter(ing =>
-    !q || ing.name.toLowerCase().includes(q) || (ing.supplier_name||'').toLowerCase().includes(q)
+    (!nq || ing.name.toLowerCase().includes(nq)) &&
+    (!sq || (ing.supplier_name||'').toLowerCase().includes(sq))
   );
   if(!ingredientsCache.length){ listEl.innerHTML = '<div class="empty">No ingredients registered yet.</div>'; return; }
   if(!filtered.length){ listEl.innerHTML = '<div class="empty">No matching ingredients.</div>'; return; }
@@ -435,13 +450,20 @@ function renderIngredientsView(){
       </div>
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">Registered Ingredients (${ingredientsCache.length})</h2>
-        <input id="ingListSearch" placeholder="Search by ingredient or supplier name...">
+        <div class="row-flex" style="gap:8px;">
+          <input id="ingNameSearch" placeholder="Search by ingredient name..." style="flex:1;min-width:140px;">
+          <input id="ingSupplierSearch" placeholder="Search by supplier name..." style="flex:1;min-width:140px;">
+        </div>
         <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : '<div class="empty">No ingredients registered yet.</div>'}</div>
       </div>
     </div>
   `;
-  renderIngredientTable('');
-  document.getElementById('ingListSearch').addEventListener('input', e => renderIngredientTable(e.target.value));
+  renderIngredientTable('', '');
+  document.getElementById('ingNameSearch').addEventListener('input', () => runIngredientSearch());
+  document.getElementById('ingSupplierSearch').addEventListener('input', () => runIngredientSearch());
+  function runIngredientSearch(){
+    renderIngredientTable(document.getElementById('ingNameSearch').value, document.getElementById('ingSupplierSearch').value);
+  }
 
   let currentImageBase64 = null, currentAnalysis = null;
   const dz = document.getElementById('dz'), fileInput = document.getElementById('fileInput');
@@ -927,6 +949,17 @@ async function loadAudit(){
 
 function escapeHtml(str){ const d=document.createElement('div'); d.textContent = str==null?'':str; return d.innerHTML; }
 function formatDate(iso){ if(!iso) return ''; const d = new Date(iso); return d.toLocaleString('en-NZ', {dateStyle:'medium', timeStyle:'short'}); }
+
+function tickClock(){
+  const el = document.getElementById('clockDisplay');
+  if(!el) return;
+  const now = new Date();
+  const datePart = now.toLocaleDateString('en-NZ', {weekday:'short', day:'2-digit', month:'short', year:'numeric'});
+  const timePart = now.toLocaleTimeString('en-NZ', {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+  el.textContent = `${datePart} · ${timePart}`;
+}
+setInterval(tickClock, 1000);
+tickClock();
 
 boot();
 </script>
