@@ -42,6 +42,18 @@ def _raw_pipeline(commands):
     resp.raise_for_status()
     return resp.json()
 
+
+def _raw_mget(keys):
+    """Batch-fetch many keys in a single pipeline request. Returns {key: parsed_value_or_None}."""
+    if not keys:
+        return {}
+    results = _raw_pipeline([["GET", k] for k in keys])
+    out = {}
+    for k, r in zip(keys, results):
+        val = r.get("result") if isinstance(r, dict) else None
+        out[k] = json.loads(val) if val is not None else None
+    return out
+
 # ---- NZ / AU Food Standards Code (Standard 1.2.3, PEAL) allergen list ----
 ALLERGENS = [
     "Wheat", "Rye", "Barley", "Oats", "Spelt", "Triticale",
@@ -103,6 +115,14 @@ def load_ingredient(ing_id):
     return _raw_get(f"allergy_ingredient:{ing_id}", None)
 
 
+def load_ingredients_many(ids):
+    """Batch-fetch several ingredients in one request, preserving order and dropping missing ones."""
+    if not ids:
+        return []
+    data = _raw_mget([f"allergy_ingredient:{i}" for i in ids])
+    return [data[f"allergy_ingredient:{i}"] for i in ids if data.get(f"allergy_ingredient:{i}") is not None]
+
+
 def list_menu_ids(company_id):
     return _raw_get(f"allergy_menu_ids:{company_id}", [])
 
@@ -111,12 +131,26 @@ def load_menu(menu_id):
     return _raw_get(f"allergy_menu:{menu_id}", None)
 
 
+def load_menus_many(ids):
+    if not ids:
+        return []
+    data = _raw_mget([f"allergy_menu:{i}" for i in ids])
+    return [data[f"allergy_menu:{i}"] for i in ids if data.get(f"allergy_menu:{i}") is not None]
+
+
 def list_subrecipe_ids(company_id):
     return _raw_get(f"allergy_subrecipe_ids:{company_id}", [])
 
 
 def load_subrecipe(sr_id):
     return _raw_get(f"allergy_subrecipe:{sr_id}", None)
+
+
+def load_subrecipes_many(ids):
+    if not ids:
+        return []
+    data = _raw_mget([f"allergy_subrecipe:{i}" for i in ids])
+    return [data[f"allergy_subrecipe:{i}"] for i in ids if data.get(f"allergy_subrecipe:{i}") is not None]
 
 
 def load_audit(company_id):
@@ -655,8 +689,7 @@ def _ingredient_public(ing):
 @login_required()
 def list_ingredients(user):
     ids = list_ingredient_ids(user["company_id"])
-    ingredients = [load_ingredient(i) for i in ids]
-    ingredients = [i for i in ingredients if i]
+    ingredients = load_ingredients_many(ids)
     ingredients.sort(key=lambda i: i["name"])
     return jsonify({"ingredients": [_ingredient_public(i) for i in ingredients]})
 
@@ -828,20 +861,16 @@ DIET_FLAG_DEFS = [
 
 def gather_ingredients(ingredient_ids, subrecipe_ids):
     """Collect the full set of ingredient records behind a menu item or sub-recipe,
-    following sub-recipes one level down (sub-recipes are made of ingredients only)."""
+    following sub-recipes one level down (sub-recipes are made of ingredients only).
+    Batches all the needed Redis reads into as few round trips as possible."""
+    subrecipes = load_subrecipes_many(subrecipe_ids or [])
+    all_ing_ids = list(ingredient_ids or [])
+    for sr in subrecipes:
+        all_ing_ids.extend(sr.get("ingredient_ids", []))
+
     seen = {}
-    for i in ingredient_ids or []:
-        ing = load_ingredient(i)
-        if ing:
-            seen[ing["id"]] = ing
-    for sid in subrecipe_ids or []:
-        sr = load_subrecipe(sid)
-        if not sr:
-            continue
-        for i in sr.get("ingredient_ids", []):
-            ing = load_ingredient(i)
-            if ing:
-                seen[ing["id"]] = ing
+    for ing in load_ingredients_many(all_ing_ids):
+        seen[ing["id"]] = ing
     return list(seen.values())
 
 
@@ -911,6 +940,50 @@ def build_menu_response(m):
     return d
 
 
+def build_menu_responses_batch(items):
+    """Same result as calling build_menu_response() per item, but fetches every
+    sub-recipe and ingredient needed across ALL items in just two batched
+    requests total, instead of two requests PER menu item."""
+    all_sr_ids = set()
+    for m in items:
+        all_sr_ids.update(m.get("sub_recipe_ids", []) or [])
+    subrecipe_by_id = {s["id"]: s for s in load_subrecipes_many(list(all_sr_ids))}
+
+    all_ing_ids = set()
+    for m in items:
+        all_ing_ids.update(m.get("ingredient_ids", []) or [])
+    for sr in subrecipe_by_id.values():
+        all_ing_ids.update(sr.get("ingredient_ids", []) or [])
+    ingredient_by_id = {i["id"]: i for i in load_ingredients_many(list(all_ing_ids))}
+
+    def gather_from_cache(ingredient_ids, subrecipe_ids):
+        seen = {}
+        for i in ingredient_ids or []:
+            ing = ingredient_by_id.get(i)
+            if ing:
+                seen[ing["id"]] = ing
+        for sid in subrecipe_ids or []:
+            sr = subrecipe_by_id.get(sid)
+            if not sr:
+                continue
+            for i in sr.get("ingredient_ids", []):
+                ing = ingredient_by_id.get(i)
+                if ing:
+                    seen[ing["id"]] = ing
+        return list(seen.values())
+
+    out = []
+    for m in items:
+        d = dict(m)
+        records = gather_from_cache(m.get("ingredient_ids", []), m.get("sub_recipe_ids", []))
+        allergens = compute_allergens(records)
+        d["allergens"] = allergens
+        d["dietFlags"] = compute_diet_flags(allergens, records)
+        d["vegFlags"] = compute_veg_flags(records)
+        out.append(d)
+    return out
+
+
 # ------------------------------------------------------------------
 # Sub-recipes CRUD — intermediate prep (e.g. "Curry Sauce") made from
 # ingredients, reused across one or more menu items.
@@ -919,13 +992,18 @@ def build_menu_response(m):
 @login_required()
 def list_sub_recipes(user):
     ids = list_subrecipe_ids(user["company_id"])
-    items = [load_subrecipe(i) for i in ids]
-    items = [s for s in items if s]
+    items = load_subrecipes_many(ids)
     items.sort(key=lambda s: s["name"])
+
+    all_ing_ids = set()
+    for s in items:
+        all_ing_ids.update(s.get("ingredient_ids", []) or [])
+    ingredient_by_id = {i["id"]: i for i in load_ingredients_many(list(all_ing_ids))}
+
     out = []
     for s in items:
         d = dict(s)
-        records = gather_ingredients(s.get("ingredient_ids", []), [])
+        records = [ingredient_by_id[i] for i in s.get("ingredient_ids", []) if i in ingredient_by_id]
         d["allergens"] = compute_allergens(records)
         out.append(d)
     return jsonify({"subRecipes": out})
@@ -993,10 +1071,9 @@ def delete_sub_recipe(user, sr_id):
 @login_required()
 def list_menu_items(user):
     ids = list_menu_ids(user["company_id"])
-    items = [load_menu(i) for i in ids]
-    items = [m for m in items if m]
+    items = load_menus_many(ids)
     items.sort(key=lambda m: m["name"])
-    return jsonify({"menuItems": [build_menu_response(m) for m in items]})
+    return jsonify({"menuItems": build_menu_responses_batch(items)})
 
 
 @app.route("/api/menu-items", methods=["POST"])
@@ -1080,14 +1157,11 @@ def staff_menu(slug):
         return jsonify({"error": "Invalid access code."}), 403
 
     ids = list_menu_ids(company_id)
-    items = [load_menu(i) for i in ids]
-    items = [m for m in items if m]
+    items = load_menus_many(ids)
     items.sort(key=lambda m: m["name"])
-    out = []
-    for m in items:
-        d = build_menu_response(m)
-        out.append({"id": d["id"], "name": d["name"], "allergens": d["allergens"],
-                     "dietFlags": d["dietFlags"], "vegFlags": d["vegFlags"]})
+    built = build_menu_responses_batch(items)
+    out = [{"id": d["id"], "name": d["name"], "allergens": d["allergens"],
+            "dietFlags": d["dietFlags"], "vegFlags": d["vegFlags"]} for d in built]
     return jsonify({"companyName": company["name"], "menuItems": out})
 
 
