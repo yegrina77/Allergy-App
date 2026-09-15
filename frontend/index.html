@@ -29,6 +29,7 @@
   }
   input::placeholder{color:#6B655B;}
   input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  select option{background-color:#1C1915;color:#F3EEE4;}
   label{font-size:12.5px;color:var(--ink-soft);display:block;margin:10px 0 4px;}
   button{font-family:inherit;cursor:pointer;}
   button.primary{
@@ -80,6 +81,15 @@
   .staff-link-box{background:var(--accent-soft);border-radius:8px;padding:14px 16px;font-size:13px;margin-top:14px;}
   .staff-link-box code{font-family:'IBM Plex Mono',monospace;background:rgba(0,0,0,0.25);padding:2px 6px;border-radius:4px;color:var(--ink);}
   .ing-picker-box{border:1px solid var(--border);border-radius:8px;padding:12px;max-height:260px;overflow-y:auto;margin-top:8px;}
+  .menu-item-card{background:rgba(243,238,228,0.025);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden;}
+  .menu-item-card summary{list-style:none;cursor:pointer;padding:11px 14px;display:flex;align-items:center;gap:10px;}
+  .menu-item-card summary::-webkit-details-marker{display:none;}
+  .menu-item-card summary::before{content:'+';font-size:16px;color:var(--ink-soft);flex-shrink:0;width:14px;}
+  .menu-item-card[open] summary::before{content:'–';}
+  .menu-item-card .name{font-family:'Newsreader',serif;font-weight:600;font-size:15px;flex:1;}
+  .dot-row{display:flex;gap:5px;flex-shrink:0;}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .menu-item-card .item-detail{padding:0 14px 14px 38px;}
 </style>
 </head>
 <body>
@@ -317,6 +327,21 @@ function vegBadgesHtml(vegFlags){
 }
 
 const RECHECK_DUE_DAYS = 180; // ~6 months
+
+function dotRowHtml(dietFlags, vegFlags){
+  const defs = [
+    {val: dietFlags && dietFlags.glutenFree, label:'Gluten Free'},
+    {val: dietFlags && dietFlags.dairyFree, label:'Dairy Free'},
+    {val: dietFlags && dietFlags.nutFree, label:'Nut Free'},
+    {val: dietFlags && dietFlags.shellfishFree, label:'Shellfish Free'},
+    {val: vegFlags && vegFlags.vegetarian, label:'Vegetarian'},
+    {val: vegFlags && vegFlags.vegan, label:'Vegan'},
+  ];
+  return `<span class="dot-row">${defs.map(d => {
+    const color = d.val === true ? 'var(--safe)' : (d.val === false ? 'var(--danger)' : '#57514A');
+    return `<span class="dot" style="background:${color};" title="${d.label}${d.val===true?': yes':(d.val===false?': no':': not classified')}"></span>`;
+  }).join('')}</span>`;
+}
 
 function verifiedBadgeHtml(lastVerifiedAt){
   if(!lastVerifiedAt) return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">Unknown</span>`;
@@ -731,19 +756,23 @@ function renderMenuView(){
 
   const listEl = document.getElementById('menuList');
   if(menuCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>Menu Item</th><th>Allergens</th><th>Free Labels</th><th>Diet</th><th>Updated</th><th></th></tr></thead><tbody>
-      ${menuCache.map(m => `
-        <tr>
-          <td><b>${escapeHtml(m.name)}</b></td>
-          <td>${allergenTagsHtml(m.allergens)}</td>
-          <td>${dietBadgesHtml(m.dietFlags)}</td>
-          <td>${vegBadgesHtml(m.vegFlags)}</td>
-          <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml(m.updated_by_name||'')}<br>${formatDate(m.updated_at)}</td>
-          <td><button class="danger" data-del-menu="${m.id}">Delete</button></td>
-        </tr>`).join('')}
-    </tbody></table>`;
+    listEl.innerHTML = menuCache.map(m => `
+      <details class="menu-item-card">
+        <summary>
+          <span class="name">${escapeHtml(m.name)}</span>
+          ${dotRowHtml(m.dietFlags, m.vegFlags)}
+          <button class="danger" data-del-menu="${m.id}" style="margin-left:8px;flex-shrink:0;">Delete</button>
+        </summary>
+        <div class="item-detail">
+          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">Allergens</div>
+          ${allergenTagsHtml(m.allergens)}
+          <div style="margin-top:10px;">${dietBadgesHtml(m.dietFlags)}${vegBadgesHtml(m.vegFlags)}</div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">Updated by ${escapeHtml(m.updated_by_name||'')} · ${formatDate(m.updated_at)}</div>
+        </div>
+      </details>`).join('');
     listEl.querySelectorAll('[data-del-menu]').forEach(btn=>{
-      btn.onclick = async () => {
+      btn.onclick = async (e) => {
+        e.preventDefault(); e.stopPropagation();
         if(!confirm('Delete this menu item?')) return;
         await api('/api/menu-items/'+btn.dataset.delMenu, {method:'DELETE'});
         await loadMenu(); renderMenuView();
