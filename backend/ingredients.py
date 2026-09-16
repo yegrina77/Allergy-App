@@ -142,6 +142,7 @@ def create_ingredient(user):
         "package_qty": data.get("packageQty"),
         "is_free": bool(data.get("isFree")),
         "diet_category": data.get("dietCategory") or None,
+        "aliases": [a.strip() for a in data.get("aliases", []) if a.strip()],
         "photo_base64": data.get("photoBase64"),
         "last_verified_at": now_iso() if data.get("photoBase64") else None,
         "created_by_id": user["id"], "created_by_name": user["name"],
@@ -191,6 +192,7 @@ def update_ingredient(user, ing_id):
         "package_qty": data.get("packageQty", existing.get("package_qty")),
         "is_free": bool(data.get("isFree", existing.get("is_free", False))),
         "diet_category": data.get("dietCategory", existing.get("diet_category")) or None,
+        "aliases": [a.strip() for a in data.get("aliases", existing.get("aliases", [])) if a.strip()],
         "updated_by_id": user["id"], "updated_by_name": user["name"],
         "updated_at": now_iso(),
     })

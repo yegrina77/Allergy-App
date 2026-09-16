@@ -1,4 +1,5 @@
 import json
+import difflib
 
 import requests
 from flask import Blueprint, request, jsonify
@@ -77,15 +78,37 @@ Respond ONLY in this JSON format, no markdown, no explanation:
         return a in b or b in a
 
     by_code = {}
+    all_ingredients = []
     for i in list_ingredient_ids(user["company_id"]):
         ing = load_ingredient(i)
-        if ing and ing.get("product_code"):
+        if not ing:
+            continue
+        all_ingredients.append(ing)
+        if ing.get("product_code"):
             by_code[ing["product_code"]] = ing
+
+    def find_possible_match(invoice_name, code):
+        """When a product code doesn't match anything, look for a registered
+        ingredient with a very similar name — likely the supplier just
+        changed the code for the same product."""
+        if not invoice_name:
+            return None
+        best, best_ratio = None, 0.0
+        for ing in all_ingredients:
+            if ing.get("product_code") == code:
+                continue  # already matched by code, not what we're looking for
+            ratio = difflib.SequenceMatcher(None, invoice_name.lower(), ing["name"].lower()).ratio()
+            if ratio > best_ratio:
+                best, best_ratio = ing, ratio
+        if best and best_ratio >= 0.6:
+            return {"id": best["id"], "name": best["name"], "oldCode": best.get("product_code")}
+        return None
 
     results = []
     for item in parsed.get("items", []):
         code = item.get("productCode")
         match = by_code.get(code) if code else None
+        possible_match = find_possible_match(item.get("productName"), code) if not match else None
 
         qty = item.get("quantity")
         unit_price = item.get("unitPrice")
@@ -118,6 +141,7 @@ Respond ONLY in this JSON format, no markdown, no explanation:
             "priceChanged": price_changed,
             "registeredSupplierName": registered_supplier_name,
             "supplierMismatch": supplier_mismatch,
+            "possibleMatch": possible_match,
         })
 
     return jsonify({"detectedSupplierName": detected_supplier or None, "items": results})
