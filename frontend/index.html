@@ -97,29 +97,35 @@
 
 <div id="authScreen" class="center-screen" style="display:none;">
   <div class="auth-card">
-    <div class="eyebrow">Allergy Manager</div>
-    <h1 style="font-size:24px;margin:6px 0 18px;">Log in / Sign up</h1>
+    <div class="row-flex" style="justify-content:space-between;align-items:center;">
+      <div class="eyebrow">Allergy Manager</div>
+      <div>
+        <button type="button" class="ghost" id="authLangEn" style="padding:3px 8px;font-size:11px;">EN</button>
+        <button type="button" class="ghost" id="authLangKo" style="padding:3px 8px;font-size:11px;">KO</button>
+      </div>
+    </div>
+    <h1 style="font-size:24px;margin:6px 0 18px;" id="authTitle">Log in / Sign up</h1>
     <div class="tabs">
       <button class="tab active" id="tabLogin">Log in</button>
       <button class="tab" id="tabSignup">New company</button>
     </div>
     <div id="loginForm">
-      <label>Company URL code (slug)</label>
+      <label id="lblCompanySlug">Company URL code (slug)</label>
       <input id="loginSlug" placeholder="e.g. greenleaf-cafe">
-      <label>Email</label>
+      <label id="lblEmail1">Email</label>
       <input id="loginEmail" type="email">
-      <label>Password</label>
+      <label id="lblPassword1">Password</label>
       <input id="loginPassword" type="password">
       <button class="primary" style="width:100%;margin-top:16px;" id="loginBtn">Log in</button>
     </div>
     <div id="signupForm" style="display:none;">
-      <label>Company (restaurant) name</label>
+      <label id="lblCompanyName">Company (restaurant) name</label>
       <input id="suCompany" placeholder="e.g. Green Leaf Cafe">
-      <label>Your name</label>
+      <label id="lblYourName">Your name</label>
       <input id="suName">
-      <label>Email</label>
+      <label id="lblEmail2">Email</label>
       <input id="suEmail" type="email">
-      <label>Password (min 8 characters)</label>
+      <label id="lblPasswordMin">Password (min 8 characters)</label>
       <input id="suPassword" type="password">
       <button class="primary" style="width:100%;margin-top:16px;" id="signupBtn">Create account (Owner)</button>
     </div>
@@ -131,11 +137,13 @@
   <header class="top">
     <div>
       <div class="eyebrow" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent);" id="companyNameLabel"></div>
-      <h1 style="font-size:24px;">Allergy Manager</h1>
+      <h1 style="font-size:24px;" id="appTitleEl">Allergy Manager</h1>
     </div>
     <div class="who">
       <div class="clock" id="clockDisplay"></div>
       <b id="whoName"></b> · <span id="whoRole"></span>
+      &nbsp;·&nbsp;<button class="ghost" id="appLangEn" style="padding:5px 8px;font-size:11px;">EN</button>
+      <button class="ghost" id="appLangKo" style="padding:5px 8px;font-size:11px;">KO</button>
       &nbsp;·&nbsp;<button class="ghost" id="logoutBtn" style="padding:5px 10px;font-size:12px;">Log out</button>
     </div>
   </header>
@@ -176,6 +184,257 @@ const DIET_CATEGORY_LABELS = {
 };
 
 let ME = null;
+let LANG = localStorage.getItem('allergyAppLang') || 'en';
+
+const T = {
+  en: {
+    loginTitle: "Log in / Sign up", loginTab: "Log in", signupTab: "New company",
+    companySlugLabel: "Company URL code (slug)", companySlugPh: "e.g. greenleaf-cafe",
+    emailLabel: "Email", passwordLabel: "Password", loginBtn: "Log in",
+    companyNameLabel: "Company (restaurant) name", companyNamePh: "e.g. Green Leaf Cafe",
+    yourNameLabel: "Your name", passwordMinLabel: "Password (min 8 characters)",
+    signupBtn: "Create account (Owner)",
+    appTitle: "Allergy Manager", logout: "Log out",
+    tabIngredients: "Ingredients", tabSubrecipes: "Sub-Recipes", tabMenu: "Menu",
+    tabInvoices: "Invoices", tabReports: "Reports", tabStaffView: "Staff View",
+    tabAdmins: "Admin Accounts", tabAudit: "Change Log",
+    roleOwner: "Owner", roleAdmin: "Admin",
+    registerPhoto: "Register Ingredient Photo",
+    dropzone: "Drag & drop a photo, or click to select",
+    analyzeBtn: "Analyze with AI",
+    registeredIngredients: "Registered Ingredients",
+    searchByName: "Search by ingredient name...", searchBySupplier: "Search by supplier name...",
+    ingNamePh: "e.g. Soy Sauce, Curry (generic name)", detectedAllergens: "Detected allergens",
+    dietCategoryLabel: "Diet category (for Vegetarian/Vegan)",
+    aliasesLabel: "Search aliases (optional, comma-separated)", aliasesPh: "e.g. breadcrumbs, panko, crumb coating",
+    aliasesHint: "Short/common names to also find this by when picking recipe ingredients — useful since supplier names are often long.",
+    isFreeLabel: "This ingredient is free (e.g. tap water) — don't track cost",
+    isSupplierLabel: "Is this a specific supplier's product?",
+    productCodeLabel: "Product code (from invoice)", productCodePh: "e.g. CR-4521",
+    supplierLabel: "Supplier", selectPlaceholder: "Select...", addNewSupplier: "+ Add new supplier",
+    newSupplierPh: "New supplier name",
+    packagePriceLabel: "Package price", packageSizeLabel: "Package size", unitLabel: "Unit",
+    packageHint: "e.g. price $76, size 20, unit kg = a 20kg bag costs $76",
+    saveResult: "Save this result", saveReverify: "Save Re-verification",
+    noPhotoToggle: "No label to photograph? (free items like tap water, or add a photo later)",
+    noPhotoNameLabel: "Ingredient name", noPhotoNamePh: "e.g. Water, or Curry Roux Hot",
+    noPhotoIsFree: "This ingredient is free (e.g. tap water) — no cost, no allergens",
+    save: "Save",
+    colName: "Name", colSupplierCode: "Supplier / Code", colPrice: "Price", colAllergens: "Allergens",
+    colDiet: "Diet", colVerified: "Verified", colUpdated: "Updated", colActions: "",
+    photo: "Photo", reverify: "Re-verify", delete: "Delete",
+    createSubRecipe: "Create Sub-Recipe",
+    subRecipeHint: "A prep or sauce made from ingredients (e.g. \"Curry Sauce\"), not sold on its own — used inside one or more menu items.",
+    subRecipeNameLabel: "Sub-recipe name", subRecipeNamePh: "e.g. Curry Sauce",
+    ingredientsUsedQty: "Ingredients used (with quantity)",
+    totalYieldLabel: "Total yield", yieldPh: "e.g. 1.5",
+    yieldHint: "How much this recipe makes in total, e.g. \"1.5 kg\" of sauce — used to work out cost per gram.",
+    saveSubRecipe: "Save Sub-Recipe", cancel: "Cancel",
+    registeredSubRecipes: "Registered Sub-Recipes",
+    colSubRecipe: "Sub-Recipe", colCost: "Cost",
+    createMenuItem: "Create New Menu Item", menuNameLabel: "Menu item name", menuNamePh: "e.g. Chicken Katsu Curry",
+    sellingPriceLabel: "Selling price (optional, for food cost %)", sellingPricePh: "e.g. 18.00",
+    subRecipesUsed: "Sub-recipes used (e.g. sauces, preps)", noSubRecipesYet: "No sub-recipes yet — optional.",
+    ingredientsUsedDirect: "Ingredients used directly",
+    saveMenuItem: "Save Menu Item",
+    registeredMenuItems: "Registered Menu Items",
+    checkInvoice: "Check Invoice & Log Purchase",
+    invoiceHint: "Upload a photo of a supplier invoice. We'll read quantities and prices, compare against what's registered, and let you log it as a purchase for this month's spend report.",
+    invoiceDropzone: "Drag & drop an invoice photo, or click to select",
+    checkInvoiceBtn: "Check Invoice",
+    invoiceDate: "Invoice date", day: "Day", month: "Month", year: "Year",
+    logAsPurchase: "Log as Purchase",
+    colInvoiceItem: "Invoice Item", colCode: "Code", colMatched: "Matched Ingredient",
+    colQty: "Qty", colUnitPrice: "Unit Price", colLineTotal: "Line Total",
+    updatePrice: "Update Price",
+    monthlyReport: "Monthly Purchase Report", downloadExcel: "Download Excel",
+    totalSpent: "Total spent", invoicesLogged: "Invoices logged",
+    colItem: "Item", colSupplier: "Supplier", colQuantity: "Quantity", colTotalSpent: "Total Spent",
+    loggedThisMonth: "Logged purchases this month",
+    staffLinkTitle: "Staff / Front-of-house lookup screen",
+    staffLinkHint: "Bookmark this link on a tablet or POS. No login needed — search menu items, filter by diet, and see allergens at a glance.",
+    copyLink: "Copy Link", copied: "Copied!",
+    addAdminAccount: "Add Admin Account", nameLabel: "Name",
+    createAdminAccount: "Create Admin Account", accountList: "Account List",
+    colRole: "Role",
+    changeLogTitle: "Change Log", colTime: "Time", colUser: "User", colAction: "Action", colTarget: "Target",
+    noRecordsYet: "No records yet.",
+    langToggle: "Language",
+    noIngredientsYet: "No ingredients registered yet.", noMatchingIngredients: "No matching ingredients.",
+    enterIngredientName: "Please enter an ingredient name.", analyzing: "Analyzing...",
+    detectedAllergensNone: "None", photoNeeded: "Photo needed", noLabelNeeded: "No label needed",
+    recheckDue: "Re-check due", enterSupplierName: "Please enter a new supplier name.",
+    confirmDeleteIngredient: "Delete this ingredient?", nSelected: "selected",
+    deleteSelected: "Delete Selected", clear: "Clear", confirmDeleteSelected: "Delete {n} selected ingredients?",
+    registerIngredientsFirst: "Register ingredients first.", allFilter: "All", noSupplierFilter: "No Supplier",
+    noSubRecipesRegistered: "No sub-recipes registered yet.", enterSubRecipeName: "Please enter a sub-recipe name.",
+    confirmDeleteSubRecipe: "Delete this sub-recipe? Menu items using it will lose those allergens.",
+    incomplete: "incomplete", total: "total",
+    noMenuItemsYet: "No menu items registered yet.", enterMenuName: "Please enter a menu item name.",
+    confirmDeleteMenu: "Delete this menu item?", updatedBy: "Updated by",
+    costIncompleteLabel: "Food cost: incomplete.", missingCostFor: "Missing cost data for:",
+    addQtyUnits: "Add quantities/units to this menu's ingredients to compute cost.",
+    foodCostLabel: "Food cost:", ofSellingPrice: "of selling price",
+    invoiceReading: "Reading invoice...", noLineItems: "No line items could be read from this photo.",
+    detectedSupplier: "Detected issuing supplier:", supplierNotDetected: "Issuing supplier name not detected.",
+    notRegistered: "Not registered", noMatch: "No match", saving: "Saving...",
+    loggedPurchase: "Logged", asPurchaseOn: "as a purchase on", chooseSpreadsheetFile: "Please choose a spreadsheet file.",
+    updated: "Updated", codeUpdated: "Code updated — re-check this invoice to confirm the match.",
+    possibly: "Possibly:", oldCode: "old code:", supplierMayHaveChanged: "supplier may have changed the code.",
+    updateCodeTo: "Update its code to", supplierMismatchWarn: "Registered supplier for this ingredient is",
+    invoiceDifferentCompany: "this invoice looks like it's from a different company. Double-check before updating the price.",
+    noPurchasesYet: "No purchases logged for this month yet.", nothingLoggedYet: "Nothing logged yet.",
+    unknownSupplier: "Unknown supplier", qty: "qty", notClassified: "not classified",
+    unverified: "unverified",
+    noAdminAccounts: "", pleaseEnterNameEmail: "Please enter name and email. Password must be at least 8 characters.",
+    confirmDeleteAccount: "Delete this account?", confirmDeleteMenuGeneric: "Delete this menu item?",
+    created: "Created", updatedAction: "Updated", deletedAction: "Deleted",
+    ingredientLabel: "Ingredient", menuItemLabel: "Menu Item", adminAccountLabel: "Admin Account", subRecipeLabel: "Sub-Recipe",
+    codeAlreadyRegistered: "This product code is already registered", savingCreatesEntry: "Saving will create a separate entry.",
+    codeNotRegisteredYet: "This product code is not registered yet.", deleting: "Deleting...",
+    more: "more", has: "has", not: "Not", free: "Free", noUnitSet: "no unit set", yes: "yes", no: "no",
+    lblGlutenFree: "Gluten Free", lblDairyFree: "Dairy Free", lblNutFree: "Nut Free", lblShellfishFree: "Shellfish Free",
+    lblVegetarian: "Vegetarian", lblVegan: "Vegan",
+  },
+  ko: {
+    loginTitle: "로그인 / 회원가입", loginTab: "로그인", signupTab: "신규 회사 등록",
+    companySlugLabel: "회사 URL 코드 (Company slug)", companySlugPh: "예: greenleaf-cafe",
+    emailLabel: "이메일", passwordLabel: "비밀번호", loginBtn: "로그인",
+    companyNameLabel: "회사(레스토랑) 이름", companyNamePh: "예: Green Leaf Cafe",
+    yourNameLabel: "담당자 이름", passwordMinLabel: "비밀번호 (8자 이상)",
+    signupBtn: "등록하고 시작하기 (오너 계정)",
+    appTitle: "알러지 매니저", logout: "로그아웃",
+    tabIngredients: "재료", tabSubrecipes: "서브레시피", tabMenu: "메뉴",
+    tabInvoices: "인보이스", tabReports: "리포트", tabStaffView: "직원용 화면",
+    tabAdmins: "관리자 계정", tabAudit: "수정 이력",
+    roleOwner: "오너", roleAdmin: "관리자",
+    registerPhoto: "재료 사진 등록",
+    dropzone: "사진을 끌어놓거나 클릭해서 선택",
+    analyzeBtn: "AI로 분석하기",
+    registeredIngredients: "등록된 재료",
+    searchByName: "재료명으로 검색...", searchBySupplier: "공급업체명으로 검색...",
+    ingNamePh: "예: 간장, 커리 (일반 이름으로)", detectedAllergens: "감지된 알러지원",
+    dietCategoryLabel: "식단 분류 (Vegetarian/Vegan용)",
+    aliasesLabel: "검색 별칭 (선택, 콤마로 구분)", aliasesPh: "예: 빵가루, 판코, 튀김옷가루",
+    aliasesHint: "레시피에 재료 넣을 때 이 이름으로도 찾을 수 있게 하는 짧은 별칭이에요 — 공급업체명이 보통 길어서 유용합니다.",
+    isFreeLabel: "이 재료는 무료입니다 (예: 수돗물) — 비용 추적 안 함",
+    isSupplierLabel: "특정 공급업체의 제품인가요?",
+    productCodeLabel: "제품코드 (인보이스의 Code)", productCodePh: "예: CR-4521",
+    supplierLabel: "공급업체", selectPlaceholder: "선택...", addNewSupplier: "+ 새 공급업체 추가",
+    newSupplierPh: "새 공급업체 이름",
+    packagePriceLabel: "포장 가격", packageSizeLabel: "포장 크기", unitLabel: "단위",
+    packageHint: "예: 가격 $76, 크기 20, 단위 kg = 20kg 포대가 $76",
+    saveResult: "이 결과로 저장", saveReverify: "재확인 결과 저장",
+    noPhotoToggle: "찍을 라벨이 없나요? (수돗물 같은 무료 재료, 또는 사진은 나중에)",
+    noPhotoNameLabel: "재료 이름", noPhotoNamePh: "예: 물, 또는 Curry Roux Hot",
+    noPhotoIsFree: "이 재료는 무료입니다 (예: 수돗물) — 비용도 알러지도 없음",
+    save: "저장",
+    colName: "이름", colSupplierCode: "공급업체 / 코드", colPrice: "가격", colAllergens: "알러지원",
+    colDiet: "식단", colVerified: "확인일", colUpdated: "수정", colActions: "",
+    photo: "사진", reverify: "재확인", delete: "삭제",
+    createSubRecipe: "서브레시피 만들기",
+    subRecipeHint: "재료로 만드는 소스/프렙(예: \"커리 소스\")으로, 그 자체로 파는 게 아니라 메뉴 안에서 쓰입니다.",
+    subRecipeNameLabel: "서브레시피 이름", subRecipeNamePh: "예: 커리 소스",
+    ingredientsUsedQty: "사용 재료 (수량 포함)",
+    totalYieldLabel: "총 수율", yieldPh: "예: 1.5",
+    yieldHint: "이 레시피가 총 얼마나 나오는지 (예: \"1.5 kg\") — g당 원가 계산에 쓰입니다.",
+    saveSubRecipe: "서브레시피 저장", cancel: "취소",
+    registeredSubRecipes: "등록된 서브레시피",
+    colSubRecipe: "서브레시피", colCost: "원가",
+    createMenuItem: "새 메뉴 만들기", menuNameLabel: "메뉴 이름", menuNamePh: "예: 치킨카츠 커리",
+    sellingPriceLabel: "판매가 (선택, 푸드코스트 %용)", sellingPricePh: "예: 18.00",
+    subRecipesUsed: "사용한 서브레시피 (소스, 프렙 등)", noSubRecipesYet: "아직 서브레시피 없음 — 선택사항.",
+    ingredientsUsedDirect: "직접 사용한 재료",
+    saveMenuItem: "메뉴 저장",
+    registeredMenuItems: "등록된 메뉴",
+    checkInvoice: "인보이스 확인 & 구매기록 저장",
+    invoiceHint: "인보이스 사진을 올리면 수량·가격을 읽어서 등록된 정보와 비교하고, 이번 달 지출 리포트에 구매기록으로 저장할 수 있습니다.",
+    invoiceDropzone: "인보이스 사진을 끌어놓거나 클릭해서 선택",
+    checkInvoiceBtn: "인보이스 확인하기",
+    invoiceDate: "인보이스 날짜", day: "일", month: "월", year: "년",
+    logAsPurchase: "구매기록으로 저장",
+    colInvoiceItem: "인보이스 항목", colCode: "코드", colMatched: "매칭된 재료",
+    colQty: "수량", colUnitPrice: "단가", colLineTotal: "합계",
+    updatePrice: "가격 업데이트",
+    monthlyReport: "월간 구매 리포트", downloadExcel: "엑셀 다운로드",
+    totalSpent: "총 지출", invoicesLogged: "로그된 인보이스",
+    colItem: "항목", colSupplier: "공급업체", colQuantity: "수량", colTotalSpent: "총 지출",
+    loggedThisMonth: "이번 달 로그된 구매",
+    staffLinkTitle: "직원/매장용 조회 화면",
+    staffLinkHint: "매장 태블릿이나 POS에 즐겨찾기 해두세요. 로그인 없이 메뉴 검색·식단 필터·알러지 확인이 가능합니다.",
+    copyLink: "링크 복사", copied: "복사됨!",
+    addAdminAccount: "관리자 계정 추가", nameLabel: "이름",
+    createAdminAccount: "관리자 계정 생성", accountList: "계정 목록",
+    colRole: "역할",
+    changeLogTitle: "수정 이력", colTime: "시간", colUser: "사용자", colAction: "작업", colTarget: "대상",
+    noRecordsYet: "아직 기록이 없습니다.",
+    langToggle: "언어",
+    noIngredientsYet: "아직 등록된 재료가 없습니다.", noMatchingIngredients: "일치하는 재료가 없습니다.",
+    enterIngredientName: "재료 이름을 입력해주세요.", analyzing: "분석 중...",
+    detectedAllergensNone: "없음", photoNeeded: "사진 필요", noLabelNeeded: "라벨 불필요",
+    recheckDue: "재확인 필요", enterSupplierName: "새 공급업체 이름을 입력해주세요.",
+    confirmDeleteIngredient: "이 재료를 삭제할까요?", nSelected: "선택됨",
+    deleteSelected: "선택 삭제", clear: "지우기", confirmDeleteSelected: "선택한 {n}개 재료를 삭제할까요?",
+    registerIngredientsFirst: "먼저 재료를 등록해주세요.", allFilter: "전체", noSupplierFilter: "공급업체 없음",
+    noSubRecipesRegistered: "아직 등록된 서브레시피가 없습니다.", enterSubRecipeName: "서브레시피 이름을 입력해주세요.",
+    confirmDeleteSubRecipe: "이 서브레시피를 삭제할까요? 이걸 쓰는 메뉴의 알러지원이 빠지게 됩니다.",
+    incomplete: "정보 부족", total: "합계",
+    noMenuItemsYet: "아직 등록된 메뉴가 없습니다.", enterMenuName: "메뉴 이름을 입력해주세요.",
+    confirmDeleteMenu: "이 메뉴를 삭제할까요?", updatedBy: "수정자",
+    costIncompleteLabel: "푸드코스트: 정보 부족.", missingCostFor: "다음 재료의 원가 정보 없음:",
+    addQtyUnits: "이 메뉴의 재료에 수량/단위를 추가하면 원가가 계산됩니다.",
+    foodCostLabel: "푸드코스트:", ofSellingPrice: "판매가 대비",
+    invoiceReading: "인보이스 읽는 중...", noLineItems: "이 사진에서 항목을 읽어내지 못했습니다.",
+    detectedSupplier: "감지된 발행 공급업체:", supplierNotDetected: "발행 업체명이 감지되지 않았습니다.",
+    notRegistered: "미등록", noMatch: "매칭 안 됨", saving: "저장 중...",
+    loggedPurchase: "구매기록", asPurchaseOn: "저장 완료, 날짜:", chooseSpreadsheetFile: "스프레드시트 파일을 선택해주세요.",
+    updated: "업데이트됨", codeUpdated: "코드가 업데이트됐습니다 — 이 인보이스를 다시 확인해서 매칭을 확인하세요.",
+    possibly: "혹시:", oldCode: "이전 코드:", supplierMayHaveChanged: "공급업체가 코드를 바꿨을 수 있습니다.",
+    updateCodeTo: "코드를 이걸로 업데이트:", supplierMismatchWarn: "이 재료에 등록된 공급업체는",
+    invoiceDifferentCompany: "인데, 이 인보이스는 다른 업체에서 온 것 같습니다. 가격 업데이트 전에 확인해주세요.",
+    noPurchasesYet: "이번 달 로그된 구매가 아직 없습니다.", nothingLoggedYet: "아직 로그된 게 없습니다.",
+    unknownSupplier: "알 수 없는 공급업체", qty: "수량", notClassified: "분류 안 됨",
+    unverified: "미확인",
+    noAdminAccounts: "", pleaseEnterNameEmail: "이름/이메일을 입력하고, 비밀번호는 8자 이상이어야 합니다.",
+    confirmDeleteAccount: "이 계정을 삭제할까요?", confirmDeleteMenuGeneric: "이 메뉴를 삭제할까요?",
+    created: "생성", updatedAction: "수정", deletedAction: "삭제",
+    ingredientLabel: "재료", menuItemLabel: "메뉴", adminAccountLabel: "관리자 계정", subRecipeLabel: "서브레시피",
+    codeAlreadyRegistered: "이 제품코드는 이미 등록되어 있습니다", savingCreatesEntry: "저장하면 별개 항목으로 생성됩니다.",
+    codeNotRegisteredYet: "이 제품코드는 아직 등록되지 않았습니다.", deleting: "삭제 중...",
+    more: "개 더", has: "포함", not: "아님:", free: "무료", noUnitSet: "단위 미설정", yes: "예", no: "아니오",
+    lblGlutenFree: "Gluten Free", lblDairyFree: "Dairy Free", lblNutFree: "Nut Free", lblShellfishFree: "Shellfish Free",
+    lblVegetarian: "Vegetarian", lblVegan: "Vegan",
+  },
+};
+
+function t(key){ return (T[LANG] && T[LANG][key]) || T.en[key] || key; }
+function setLang(l){ LANG = l; localStorage.setItem('allergyAppLang', l); renderCurrentTab(); }
+
+function applyAppLang(){
+  document.getElementById('appTitleEl').textContent = t('appTitle');
+  document.getElementById('logoutBtn').textContent = t('logout');
+  if(ME) document.getElementById('whoRole').textContent = ME.user.role === 'owner' ? t('roleOwner') : t('roleAdmin');
+  document.querySelectorAll('#mainTabs .tab').forEach(tab => {
+    const key = {ingredients:'tabIngredients', subrecipes:'tabSubrecipes', menu:'tabMenu', invoices:'tabInvoices',
+      reports:'tabReports', staffLink:'tabStaffView', admins:'tabAdmins', audit:'tabAudit'}[tab.dataset.view];
+    if(key) tab.textContent = t(key);
+  });
+}
+
+function renderCurrentTab(){
+  applyAppLang();
+  const active = document.querySelector('#mainTabs .tab.active');
+  const v = active ? active.dataset.view : 'ingredients';
+  if(v === 'ingredients') renderIngredientsView();
+  if(v === 'subrecipes') renderSubRecipesView();
+  if(v === 'menu') renderMenuView();
+  if(v === 'invoices') renderInvoicesView();
+  if(v === 'reports') renderReportsView();
+  if(v === 'staffLink') renderStaffLinkView();
+  if(v === 'admins') loadAdmins();
+  if(v === 'audit') loadAudit();
+}
+
 let reverifyTarget = null;
 let selectedForDelete = new Set();
 let ingredientsCache = [];
@@ -195,6 +454,26 @@ async function api(path, opts={}){
 }
 
 // ---------- Auth ----------
+function applyAuthLang(){
+  document.getElementById('authTitle').textContent = t('loginTitle');
+  document.getElementById('tabLogin').textContent = t('loginTab');
+  document.getElementById('tabSignup').textContent = t('signupTab');
+  document.getElementById('lblCompanySlug').textContent = t('companySlugLabel');
+  document.getElementById('loginSlug').placeholder = t('companySlugPh');
+  document.getElementById('lblEmail1').textContent = t('emailLabel');
+  document.getElementById('lblPassword1').textContent = t('passwordLabel');
+  document.getElementById('loginBtn').textContent = t('loginBtn');
+  document.getElementById('lblCompanyName').textContent = t('companyNameLabel');
+  document.getElementById('suCompany').placeholder = t('companyNamePh');
+  document.getElementById('lblYourName').textContent = t('yourNameLabel');
+  document.getElementById('lblEmail2').textContent = t('emailLabel');
+  document.getElementById('lblPasswordMin').textContent = t('passwordMinLabel');
+  document.getElementById('signupBtn').textContent = t('signupBtn');
+}
+document.getElementById('authLangEn').onclick = () => { LANG='en'; localStorage.setItem('allergyAppLang','en'); applyAuthLang(); };
+document.getElementById('authLangKo').onclick = () => { LANG='ko'; localStorage.setItem('allergyAppLang','ko'); applyAuthLang(); };
+applyAuthLang();
+
 document.getElementById('tabLogin').onclick = () => switchAuthTab('login');
 document.getElementById('tabSignup').onclick = () => switchAuthTab('signup');
 function switchAuthTab(which){
@@ -232,6 +511,9 @@ document.getElementById('signupBtn').onclick = async () => {
   }catch(e){ showAuthError(e.message); }
 };
 
+document.getElementById('appLangEn').onclick = () => setLang('en');
+document.getElementById('appLangKo').onclick = () => setLang('ko');
+
 document.getElementById('logoutBtn').onclick = async () => {
   await api('/api/logout', {method:'POST'});
   location.reload();
@@ -249,11 +531,12 @@ async function boot(){
   document.getElementById('appScreen').style.display='block';
   document.getElementById('companyNameLabel').textContent = data.company.name;
   document.getElementById('whoName').textContent = data.user.name;
-  document.getElementById('whoRole').textContent = data.user.role === 'owner' ? 'Owner' : 'Admin';
+  document.getElementById('whoRole').textContent = data.user.role === 'owner' ? t('roleOwner') : t('roleAdmin');
   if(data.user.role === 'owner'){
     document.getElementById('tabAdmins').style.display='inline-block';
     document.getElementById('tabAudit').style.display='inline-block';
   }
+  applyAppLang();
   await Promise.all([loadSuppliers(), loadIngredients(), loadSubRecipes(), loadMenu()]);
   renderIngredientsView();
   renderSubRecipesView();
@@ -284,38 +567,39 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
 // ---------- Shared renderers ----------
 function allergenTagsHtml(allergens, maxShow){
   maxShow = maxShow || 5;
-  if(!allergens || !allergens.length) return '<span style="color:var(--ink-soft);font-size:13px;">None</span>';
+  if(!allergens || !allergens.length) return `<span style="color:var(--ink-soft);font-size:13px;">${t('detectedAllergensNone')}</span>`;
   const shown = allergens.slice(0, maxShow);
   const rest = allergens.slice(maxShow);
   let html = shown.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('');
   if(rest.length){
-    html += `<details class="more-toggle"><summary>+${rest.length} more</summary>${rest.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('')}</details>`;
+    html += `<details class="more-toggle"><summary>+${rest.length} ${t('more')}</summary>${rest.map(a => `<span class="tag ${a.confidence==='low'?'low':''}">${escapeHtml(a.name)}</span>`).join('')}</details>`;
   }
   return html;
 }
 
 const DIET_FLAG_UI = [
-  {key:'gluten', label:'Gluten Free'},
-  {key:'dairy', label:'Dairy Free'},
-  {key:'nut', label:'Nut Free'},
-  {key:'shellfish', label:'Shellfish Free'},
+  {key:'gluten', labelKey:'lblGlutenFree'},
+  {key:'dairy', labelKey:'lblDairyFree'},
+  {key:'nut', labelKey:'lblNutFree'},
+  {key:'shellfish', labelKey:'lblShellfishFree'},
 ];
 
 function dietBadgesHtml(dietFlags){
   if(!dietFlags) return '';
   return DIET_FLAG_UI.map(def => {
+    const label = t(def.labelKey);
     const ok = dietFlags[def.key+'Free'];
     const culprits = dietFlags[def.key+'Culprits'] || [];
     const maxNames = 3;
     let names = culprits.slice(0, maxNames).map(escapeHtml).join(', ');
-    if(culprits.length > maxNames) names += `, +${culprits.length - maxNames} more`;
-    if(ok === true) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${def.label}</span>`;
+    if(culprits.length > maxNames) names += `, +${culprits.length - maxNames} ${t('more')}`;
+    if(ok === true) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${label}</span>`;
     if(ok === false){
-      const why = names ? ` (has: ${names})` : '';
-      return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${def.label}${why}</span>`;
+      const why = names ? ` (${t('has')}: ${names})` : '';
+      return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">${t('not')} ${label}${why}</span>`;
     }
-    const why = names ? ` (unverified: ${names})` : '';
-    return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">${def.label}: unverified${why}</span>`;
+    const why = names ? ` (${t('unverified')}: ${names})` : '';
+    return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">${label}: ${t('unverified')}${why}</span>`;
   }).join('');
 }
 
@@ -326,19 +610,19 @@ function vegBadgesHtml(vegFlags){
     if(val === false){
       const maxNames = 3;
       let names = (culprits||[]).slice(0, maxNames).map(escapeHtml).join(', ');
-      if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} more`;
-      const why = names ? ` (has: ${names})` : '';
-      return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">Not ${label}${why}</span>`;
+      if((culprits||[]).length > maxNames) names += `, +${culprits.length - maxNames} ${t('more')}`;
+      const why = names ? ` (${t('has')}: ${names})` : '';
+      return `<span class="tag" style="background:var(--danger-soft);color:var(--danger);">${t('not')} ${label}${why}</span>`;
     }
-    return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">${label}: not classified</span>`;
+    return `<span class="tag" style="background:var(--neutral-soft);color:var(--neutral);">${label}: ${t('notClassified')}</span>`;
   };
-  return one(vegFlags.vegetarian, 'Vegetarian', vegFlags.vegetarianCulprits) + one(vegFlags.vegan, 'Vegan', vegFlags.veganCulprits);
+  return one(vegFlags.vegetarian, t('lblVegetarian'), vegFlags.vegetarianCulprits) + one(vegFlags.vegan, t('lblVegan'), vegFlags.veganCulprits);
 }
 
 function priceCellHtml(ing){
-  if(ing.is_free) return '<span style="color:var(--safe);font-family:inherit;">Free</span>';
+  if(ing.is_free) return `<span style="color:var(--safe);font-family:inherit;">${t('free')}</span>`;
   if(ing.price == null) return '<span style="color:var(--ink-soft);font-family:inherit;">—</span>';
-  const pkg = (ing.unit && ing.package_qty) ? ` / ${ing.package_qty}${ing.unit}` : '<span style="color:var(--warn);font-family:inherit;"> (no unit set)</span>';
+  const pkg = (ing.unit && ing.package_qty) ? ` / ${ing.package_qty}${ing.unit}` : `<span style="color:var(--warn);font-family:inherit;"> (${t('noUnitSet')})</span>`;
   return `$${Number(ing.price).toFixed(2)}${pkg}`;
 }
 
@@ -346,31 +630,36 @@ const RECHECK_DUE_DAYS = 180; // ~6 months
 
 function dotRowHtml(dietFlags, vegFlags){
   const defs = [
-    {val: dietFlags && dietFlags.glutenFree, label:'Gluten Free'},
-    {val: dietFlags && dietFlags.dairyFree, label:'Dairy Free'},
-    {val: dietFlags && dietFlags.nutFree, label:'Nut Free'},
-    {val: dietFlags && dietFlags.shellfishFree, label:'Shellfish Free'},
-    {val: vegFlags && vegFlags.vegetarian, label:'Vegetarian'},
-    {val: vegFlags && vegFlags.vegan, label:'Vegan'},
+    {val: dietFlags && dietFlags.glutenFree, label:t('lblGlutenFree')},
+    {val: dietFlags && dietFlags.dairyFree, label:t('lblDairyFree')},
+    {val: dietFlags && dietFlags.nutFree, label:t('lblNutFree')},
+    {val: dietFlags && dietFlags.shellfishFree, label:t('lblShellfishFree')},
+    {val: vegFlags && vegFlags.vegetarian, label:t('lblVegetarian')},
+    {val: vegFlags && vegFlags.vegan, label:t('lblVegan')},
   ];
   return `<span class="dot-row">${defs.map(d => {
     const color = d.val === true ? 'var(--safe)' : (d.val === false ? 'var(--danger)' : '#57514A');
-    return `<span class="dot" style="background:${color};" title="${d.label}${d.val===true?': yes':(d.val===false?': no':': not classified')}"></span>`;
+    return `<span class="dot" style="background:${color};" title="${d.label}${d.val===true?': '+t('yes'):(d.val===false?': '+t('no'):': '+t('notClassified'))}"></span>`;
   }).join('')}</span>`;
 }
 
 function verifiedBadgeHtml(lastVerifiedAt, isFree){
-  if(isFree) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">No label needed</span>`;
-  if(!lastVerifiedAt) return `<span class="tag" style="background:var(--warn-soft);color:var(--warn);">Photo needed</span>`;
+  if(isFree) return `<span class="tag" style="background:var(--safe-soft);color:var(--safe);">${t('noLabelNeeded')}</span>`;
+  if(!lastVerifiedAt) return `<span class="tag" style="background:var(--warn-soft);color:var(--warn);">${t('photoNeeded')}</span>`;
   const days = Math.floor((Date.now() - new Date(lastVerifiedAt).getTime()) / (1000*60*60*24));
   const dateStr = formatDate(lastVerifiedAt);
   if(days > RECHECK_DUE_DAYS){
-    return `<span class="tag" style="background:var(--warn-soft);color:var(--warn);">Re-check due · ${dateStr}</span>`;
+    return `<span class="tag" style="background:var(--warn-soft);color:var(--warn);">${t('recheckDue')} · ${dateStr}</span>`;
   }
   return `<span style="color:var(--ink-soft);">${dateStr}</span>`;
 }
 
 // ---------- Reusable ingredient picker (search + supplier filter + chips) ----------
+function ingredientMatchesQuery(ing, q){
+  if(ing.name.toLowerCase().includes(q)) return true;
+  return (ing.aliases||[]).some(a => a.toLowerCase().includes(q));
+}
+
 function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
   let currentFilter = 'all';
   let currentSearch = '';
@@ -384,8 +673,8 @@ function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
   function renderFilterRow(){
     const row = document.getElementById(filterRowId);
     const filters = [
-      {id:'all', label:'All'},
-      {id:'none', label:'No Supplier'},
+      {id:'all', label:t('allFilter')},
+      {id:'none', label:t('noSupplierFilter')},
       ...suppliersCache.map(s => ({id:s.id, label:s.name})),
     ];
     row.innerHTML = filters.map(f => `<button type="button" class="chip filter ${currentFilter===f.id?'on':''}" data-filter="${f.id}">${escapeHtml(f.label)}</button>`).join('');
@@ -397,9 +686,9 @@ function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
   function renderChips(){
     const box = document.getElementById(boxId);
     const q = currentSearch.trim().toLowerCase();
-    const filtered = ingredientsCache.filter(ing => matches(ing) && (!q || ing.name.toLowerCase().includes(q)));
-    if(!ingredientsCache.length){ box.innerHTML = '<span class="empty">Register ingredients first.</span>'; return; }
-    if(!filtered.length){ box.innerHTML = '<span class="empty">No matching ingredients.</span>'; return; }
+    const filtered = ingredientsCache.filter(ing => matches(ing) && (!q || ingredientMatchesQuery(ing, q)));
+    if(!ingredientsCache.length){ box.innerHTML = `<span class="empty">${t('registerIngredientsFirst')}</span>`; return; }
+    if(!filtered.length){ box.innerHTML = `<span class="empty">${t('noMatchingIngredients')}</span>`; return; }
     box.innerHTML = filtered.map(ing => {
       const sel = selectedMap.has(ing.id);
       const cur = selectedMap.get(ing.id) || {qty:'', unit: ing.unit || 'g'};
@@ -462,35 +751,35 @@ function renderIngredientTable(nameQuery, supplierQuery){
   const nq = (nameQuery||'').trim().toLowerCase();
   const sq = (supplierQuery||'').trim().toLowerCase();
   const filtered = ingredientsCache.filter(ing =>
-    (!nq || ing.name.toLowerCase().includes(nq)) &&
+    (!nq || ingredientMatchesQuery(ing, nq)) &&
     (!sq || (ing.supplier_name||'').toLowerCase().includes(sq))
   );
-  if(!ingredientsCache.length){ listEl.innerHTML = '<div class="empty">No ingredients registered yet.</div>'; return; }
-  if(!filtered.length){ listEl.innerHTML = '<div class="empty">No matching ingredients.</div>'; return; }
+  if(!ingredientsCache.length){ listEl.innerHTML = `<div class="empty">${t('noIngredientsYet')}</div>`; return; }
+  if(!filtered.length){ listEl.innerHTML = `<div class="empty">${t('noMatchingIngredients')}</div>`; return; }
 
   const filteredIds = new Set(filtered.map(i => i.id));
   const allVisibleSelected = filtered.length > 0 && filtered.every(i => selectedForDelete.has(i.id));
 
   listEl.innerHTML = `
     <div id="bulkDeleteToolbar" style="display:${selectedForDelete.size ? 'flex':'none'};align-items:center;gap:10px;margin-bottom:8px;">
-      <span style="font-size:12.5px;color:var(--ink-soft);"><b id="bulkSelCount">${selectedForDelete.size}</b> selected</span>
-      <button class="danger" id="bulkDeleteBtn">Delete Selected</button>
-      <button class="ghost" id="bulkClearBtn" style="padding:5px 9px;font-size:11px;">Clear</button>
+      <span style="font-size:12.5px;color:var(--ink-soft);"><b id="bulkSelCount">${selectedForDelete.size}</b> ${t('nSelected')}</span>
+      <button class="danger" id="bulkDeleteBtn">${t('deleteSelected')}</button>
+      <button class="ghost" id="bulkClearBtn" style="padding:5px 9px;font-size:11px;">${t('clear')}</button>
     </div>
     <table><thead><tr>
       <th><input type="checkbox" id="selectAllVisible" ${allVisibleSelected?'checked':''}></th>
-      <th>Name</th><th>Supplier / Code</th><th>Price</th><th>Allergens</th><th>Diet</th><th>Verified</th><th></th>
+      <th>${t('colName')}</th><th>${t('colSupplierCode')}</th><th>${t('colPrice')}</th><th>${t('colAllergens')}</th><th>${t('colDiet')}</th><th>${t('colVerified')}</th><th></th>
     </tr></thead><tbody>
     ${filtered.map(ing => `
       <tr>
         <td><input type="checkbox" class="ing-check" data-id="${ing.id}" ${selectedForDelete.has(ing.id)?'checked':''}></td>
-        <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">Photo</button>` : ''}</td>
+        <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">${t('photo')}</button>` : ''}</td>
         <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
         <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${priceCellHtml(ing)}</td>
         <td>${allergenTagsHtml(ing.allergens)}</td>
         <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
         <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at, ing.is_free)}</td>
-        <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">Re-verify</button> <button class="danger" data-del-ing="${ing.id}">Delete</button></td>
+        <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">${t('reverify')}</button> <button class="danger" data-del-ing="${ing.id}">${t('delete')}</button></td>
       </tr>`).join('')}
   </tbody></table>`;
 
@@ -518,10 +807,10 @@ function renderIngredientTable(nameQuery, supplierQuery){
   const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
   if(bulkDeleteBtn){
     bulkDeleteBtn.onclick = async () => {
-      if(!confirm(`Delete ${selectedForDelete.size} selected ingredients?`)) return;
+      if(!confirm(t('confirmDeleteSelected').replace('{n}', selectedForDelete.size))) return;
       bulkDeleteBtn.disabled = true;
       const originalText = bulkDeleteBtn.textContent;
-      bulkDeleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
+      bulkDeleteBtn.innerHTML = `<span class="spinner"></span> ${t('deleting')}`;
       try{
         await api('/api/ingredients/bulk-delete', {method:'POST', body: JSON.stringify({ids:[...selectedForDelete]})});
         selectedForDelete.clear();
@@ -551,7 +840,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
   });
   listEl.querySelectorAll('[data-del-ing]').forEach(btn=>{
     btn.onclick = async () => {
-      if(!confirm('Delete this ingredient?')) return;
+      if(!confirm(t('confirmDeleteIngredient'))) return;
       await api('/api/ingredients/'+btn.dataset.delIng, {method:'DELETE'});
       selectedForDelete.delete(btn.dataset.delIng);
       await loadIngredients(); renderIngredientsView();
@@ -573,40 +862,40 @@ function renderIngredientsView(){
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">Register Ingredient Photo</h2>
-        ${reverifyTarget ? `<div style="background:var(--accent-soft);border-radius:7px;padding:9px 12px;font-size:13px;margin-bottom:12px;">Re-verifying: <b>${escapeHtml(reverifyTarget.name)}</b> <button class="ghost" id="cancelReverifyBtn" style="padding:2px 8px;font-size:11px;margin-left:6px;">Cancel</button></div>` : ''}
-        <div class="dropzone" id="dz">Drag & drop a photo, or click to select</div>
+        <h2 style="font-size:17px;margin-bottom:12px;">${t('registerPhoto')}</h2>
+        ${reverifyTarget ? `<div style="background:var(--accent-soft);border-radius:7px;padding:9px 12px;font-size:13px;margin-bottom:12px;">Re-verifying: <b>${escapeHtml(reverifyTarget.name)}</b> <button class="ghost" id="cancelReverifyBtn" style="padding:2px 8px;font-size:11px;margin-left:6px;">${t('cancel')}</button></div>` : ''}
+        <div class="dropzone" id="dz">${t('dropzone')}</div>
         <input type="file" id="fileInput" accept="image/*" capture="environment">
         <div class="preview" id="preview"><img id="previewImg"></div>
-        <button class="primary" style="width:100%;margin-top:10px;" id="analyzeBtn" disabled>Analyze with AI</button>
+        <button class="primary" style="width:100%;margin-top:10px;" id="analyzeBtn" disabled>${t('analyzeBtn')}</button>
         <div id="analyzeStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
         <div id="analyzeResult"></div>
         ${!reverifyTarget ? `
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-          <button class="ghost" id="noPhotoToggleBtn" style="font-size:12.5px;">No label to photograph? (free items like tap water, or add a photo later)</button>
+          <button class="ghost" id="noPhotoToggleBtn" style="font-size:12.5px;">${t('noPhotoToggle')}</button>
           <div id="noPhotoForm" style="display:none;margin-top:10px;">
-            <label>Ingredient name</label>
-            <input id="noPhotoName" placeholder="e.g. Water, or Curry Roux Hot">
+            <label>${t('noPhotoNameLabel')}</label>
+            <input id="noPhotoName" placeholder="${t('noPhotoNamePh')}">
             <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;">
-              <input type="checkbox" id="noPhotoIsFree" style="width:auto;"> This ingredient is free (e.g. tap water) — no cost, no allergens
+              <input type="checkbox" id="noPhotoIsFree" style="width:auto;"> ${t('noPhotoIsFree')}
             </label>
             <div id="noPhotoDietRow" style="margin-top:8px;">
-              <label>Diet category (for Vegetarian/Vegan)</label>
+              <label>${t('dietCategoryLabel')}</label>
               <select id="noPhotoDietCategory">
                 ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
               </select>
             </div>
-            <button class="primary" style="width:100%;margin-top:10px;" id="noPhotoSaveBtn">Save</button>
+            <button class="primary" style="width:100%;margin-top:10px;" id="noPhotoSaveBtn">${t('save')}</button>
           </div>
         </div>` : ''}
       </div>
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">Registered Ingredients (${ingredientsCache.length})</h2>
+        <h2 style="font-size:17px;margin-bottom:12px;">${t('registeredIngredients')} (${ingredientsCache.length})</h2>
         <div class="row-flex" style="gap:8px;">
-          <input id="ingNameSearch" placeholder="Search by ingredient name..." style="flex:1;min-width:140px;">
-          <input id="ingSupplierSearch" placeholder="Search by supplier name..." style="flex:1;min-width:140px;">
+          <input id="ingNameSearch" placeholder="${t('searchByName')}" style="flex:1;min-width:140px;">
+          <input id="ingSupplierSearch" placeholder="${t('searchBySupplier')}" style="flex:1;min-width:140px;">
         </div>
-        <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : '<div class="empty">No ingredients registered yet.</div>'}</div>
+        <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : `<div class="empty">${t('noIngredientsYet')}</div>`}</div>
       </div>
     </div>
   `;
@@ -636,7 +925,7 @@ function renderIngredientsView(){
     noPhotoIsFree.onchange = () => { noPhotoDietRow.style.display = 'block'; }; // diet category still useful even when free
     document.getElementById('noPhotoSaveBtn').onclick = async () => {
       const name = document.getElementById('noPhotoName').value.trim();
-      if(!name){ alert('Please enter an ingredient name.'); return; }
+      if(!name){ alert(t('enterIngredientName')); return; }
       const isFree = noPhotoIsFree.checked;
       const dietCategory = document.getElementById('noPhotoDietCategory').value || null;
       try{
@@ -676,59 +965,63 @@ function renderIngredientsView(){
 
   analyzeBtn.onclick = async () => {
     analyzeBtn.disabled = true;
-    document.getElementById('analyzeStatus').innerHTML = '<span class="spinner"></span> Analyzing...';
+    document.getElementById('analyzeStatus').innerHTML = `<span class="spinner"></span> ${t('analyzing')}`;
     document.getElementById('analyzeResult').innerHTML = '';
     try{
       currentAnalysis = await api('/api/ingredients/analyze', {method:'POST', body: JSON.stringify({imageBase64: currentImageBase64})});
       document.getElementById('analyzeStatus').textContent = '';
       document.getElementById('analyzeResult').innerHTML = `
-        <label>Ingredient name</label>
-        <input id="newIngName" placeholder="e.g. Soy Sauce, Curry (generic name)" value="${reverifyTarget ? escapeHtml(reverifyTarget.name) : ''}">
-        <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">Detected allergens</div>
+        <label>${t('noPhotoNameLabel')}</label>
+        <input id="newIngName" placeholder="${t('ingNamePh')}" value="${reverifyTarget ? escapeHtml(reverifyTarget.name) : ''}">
+        <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">${t('detectedAllergens')}</div>
         <div>${allergenTagsHtml(currentAnalysis.allergens, 26)}</div>
         ${currentAnalysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(currentAnalysis.notes)}</div>` : ''}
-        <label>Diet category (for Vegetarian/Vegan)</label>
+        <label>${t('dietCategoryLabel')}</label>
         <select id="newIngDietCategory">
           ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}" ${reverifyTarget && (reverifyTarget.diet_category||'')===v ? 'selected':''}>${l}</option>`).join('')}
         </select>
 
+        <label>${t('aliasesLabel')}</label>
+        <input id="newIngAliases" placeholder="${t('aliasesPh')}" value="${reverifyTarget && reverifyTarget.aliases ? escapeHtml(reverifyTarget.aliases.join(', ')) : ''}">
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:4px 0 0;">${t('aliasesHint')}</p>
+
         <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
-          <input type="checkbox" id="isFreeIngredient" style="width:auto;" ${reverifyTarget && reverifyTarget.is_free ? 'checked':''}> This ingredient is free (e.g. tap water) — don't track cost
+          <input type="checkbox" id="isFreeIngredient" style="width:auto;" ${reverifyTarget && reverifyTarget.is_free ? 'checked':''}> ${t('isFreeLabel')}
         </label>
 
         <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;">
-          <input type="checkbox" id="isSupplierProduct" style="width:auto;" ${reverifyTarget && reverifyTarget.supplier_id ? 'checked':''}> Is this a specific supplier's product?
+          <input type="checkbox" id="isSupplierProduct" style="width:auto;" ${reverifyTarget && reverifyTarget.supplier_id ? 'checked':''}> ${t('isSupplierLabel')}
         </label>
         <div id="supplierFields" style="display:${reverifyTarget && reverifyTarget.supplier_id ? 'block':'none'};margin-top:8px;">
-          <label>Product code (from invoice)</label>
-          <input id="newIngCode" placeholder="e.g. CR-4521" value="${reverifyTarget && reverifyTarget.product_code ? escapeHtml(reverifyTarget.product_code) : ''}">
+          <label>${t('productCodeLabel')}</label>
+          <input id="newIngCode" placeholder="${t('productCodePh')}" value="${reverifyTarget && reverifyTarget.product_code ? escapeHtml(reverifyTarget.product_code) : ''}">
           <div id="codeLookupMsg" style="font-size:12.5px;margin-top:4px;"></div>
-          <label>Supplier</label>
+          <label>${t('supplierLabel')}</label>
           <select id="newIngSupplier">
-            <option value="">Select...</option>
+            <option value="">${t('selectPlaceholder')}</option>
             ${suppliersCache.map(s => `<option value="${s.id}" ${reverifyTarget && reverifyTarget.supplier_id===s.id ? 'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
-            <option value="__new__">+ Add new supplier</option>
+            <option value="__new__">${t('addNewSupplier')}</option>
           </select>
-          <input id="newSupplierName" placeholder="New supplier name" style="display:none;margin-top:6px;">
+          <input id="newSupplierName" placeholder="${t('newSupplierPh')}" style="display:none;margin-top:6px;">
           <div class="row-flex" style="gap:8px;margin-top:8px;">
             <div style="flex:1;min-width:100px;">
-              <label>Package price</label>
+              <label>${t('packagePriceLabel')}</label>
               <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 76.00" value="${reverifyTarget && reverifyTarget.price!=null ? reverifyTarget.price : ''}">
             </div>
             <div style="flex:1;min-width:80px;">
-              <label>Package size</label>
+              <label>${t('packageSizeLabel')}</label>
               <input id="newIngPackageQty" type="number" step="any" placeholder="e.g. 20" value="${reverifyTarget && reverifyTarget.package_qty!=null ? reverifyTarget.package_qty : ''}">
             </div>
             <div style="flex:1;min-width:70px;">
-              <label>Unit</label>
+              <label>${t('unitLabel')}</label>
               <select id="newIngUnit">
                 ${UNIT_OPTIONS.map(u => `<option value="${u}" ${reverifyTarget && reverifyTarget.unit===u ? 'selected':''}>${u}</option>`).join('')}
               </select>
             </div>
           </div>
-          <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">e.g. price $76, size 20, unit kg = a 20kg bag costs $76</p>
+          <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('packageHint')}</p>
         </div>
-        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">${reverifyTarget ? 'Save Re-verification' : 'Save this result'}</button>
+        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">${reverifyTarget ? t('saveReverify') : t('saveResult')}</button>
       `;
 
       const freeToggle = document.getElementById('isFreeIngredient');
@@ -747,10 +1040,10 @@ function renderIngredientsView(){
         const res = await api('/api/ingredients/lookup?code=' + encodeURIComponent(code));
         if(res.ingredient){
           msgEl.style.color = 'var(--warn)';
-          msgEl.textContent = `This product code is already registered (${res.ingredient.name} · ${res.ingredient.supplier_name||''}). Saving will create a separate entry.`;
+          msgEl.textContent = `${t('codeAlreadyRegistered')} (${res.ingredient.name} · ${res.ingredient.supplier_name||''}). ${t('savingCreatesEntry')}`;
         } else {
           msgEl.style.color = 'var(--safe)';
-          msgEl.textContent = 'This product code is not registered yet.';
+          msgEl.textContent = t('codeNotRegisteredYet');
         }
       });
 
@@ -760,7 +1053,7 @@ function renderIngredientsView(){
 
       document.getElementById('saveIngBtn').onclick = async () => {
         const name = document.getElementById('newIngName').value.trim();
-        if(!name){ alert('Please enter an ingredient name.'); return; }
+        if(!name){ alert(t('enterIngredientName')); return; }
         const dietCategory = document.getElementById('newIngDietCategory').value || null;
         const isFree = freeToggle.checked;
 
@@ -775,7 +1068,7 @@ function renderIngredientsView(){
           const supplierSelect = document.getElementById('newIngSupplier').value;
           if(supplierSelect === '__new__'){
             const newName = document.getElementById('newSupplierName').value.trim();
-            if(!newName){ alert('Please enter a new supplier name.'); return; }
+            if(!newName){ alert(t('enterSupplierName')); return; }
             const r = await api('/api/suppliers', {method:'POST', body: JSON.stringify({name:newName})});
             supplierId = r.supplier.id;
             await loadSuppliers();
@@ -791,6 +1084,7 @@ function renderIngredientsView(){
           name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
           overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
           photoBase64: currentImageBase64, dietCategory, isFree,
+          aliases: document.getElementById('newIngAliases').value.split(',').map(s=>s.trim()).filter(Boolean),
         };
         if(isFree){ body.supplierId = null; body.productCode = null; body.price = null; body.unit = null; body.packageQty = null; }
         else if(supplierTouched){ body.supplierId = supplierId; body.productCode = productCode; body.price = price; body.unit = unit; body.packageQty = packageQty; }
@@ -826,33 +1120,33 @@ function renderSubRecipesView(){
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:4px;">Create Sub-Recipe</h2>
-        <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">A prep or sauce made from ingredients (e.g. "Curry Sauce"), not sold on its own — used inside one or more menu items.</p>
-        <label>Sub-recipe name</label>
-        <input id="newSrName" placeholder="e.g. Curry Sauce">
-        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">Ingredients used (with quantity)</div>
-        <input id="srIngSearch" placeholder="Search ingredients by name...">
+        <h2 style="font-size:17px;margin-bottom:4px;">${t('createSubRecipe')}</h2>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">${t('subRecipeHint')}</p>
+        <label>${t('subRecipeNameLabel')}</label>
+        <input id="newSrName" placeholder="${t('subRecipeNamePh')}">
+        <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">${t('ingredientsUsedQty')}</div>
+        <input id="srIngSearch" placeholder="${t('searchByName')}">
         <div class="chip-grid" id="srSupplierFilterRow" style="margin-top:8px;"></div>
         <div class="ing-picker-box" id="srIngChips"></div>
         <div class="row-flex" style="gap:8px;margin-top:10px;">
           <div style="flex:1;min-width:100px;">
-            <label>Total yield</label>
-            <input id="srYieldQty" type="number" step="any" placeholder="e.g. 1.5">
+            <label>${t('totalYieldLabel')}</label>
+            <input id="srYieldQty" type="number" step="any" placeholder="${t('yieldPh')}">
           </div>
           <div style="flex:1;min-width:80px;">
-            <label>Unit</label>
+            <label>${t('unitLabel')}</label>
             <select id="srYieldUnit">${UNIT_OPTIONS.map(u=>`<option value="${u}">${u}</option>`).join('')}</select>
           </div>
         </div>
-        <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">How much this recipe makes in total, e.g. "1.5 kg" of sauce — used to work out cost per gram.</p>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('yieldHint')}</p>
         <div class="row-flex" style="gap:8px;margin-top:14px;">
-          <button class="primary" style="flex:1;" id="saveSrBtn">Save Sub-Recipe</button>
-          <button class="ghost" id="cancelSrBtn">Cancel</button>
+          <button class="primary" style="flex:1;" id="saveSrBtn">${t('saveSubRecipe')}</button>
+          <button class="ghost" id="cancelSrBtn">${t('cancel')}</button>
         </div>
       </div>
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">Registered Sub-Recipes (${subRecipesCache.length})</h2>
-        <div id="srList">${subRecipesCache.length ? '' : '<div class="empty">No sub-recipes registered yet.</div>'}</div>
+        <h2 style="font-size:17px;margin-bottom:12px;">${t('registeredSubRecipes')} (${subRecipesCache.length})</h2>
+        <div id="srList">${subRecipesCache.length ? '' : `<div class="empty">${t('noSubRecipesRegistered')}</div>`}</div>
       </div>
     </div>
   `;
@@ -864,7 +1158,7 @@ function renderSubRecipesView(){
 
   document.getElementById('saveSrBtn').onclick = async () => {
     const name = document.getElementById('newSrName').value.trim();
-    if(!name){ alert('Please enter a sub-recipe name.'); return; }
+    if(!name){ alert(t('enterSubRecipeName')); return; }
     const ingredientUsages = [...selectedIngMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
     const yieldQtyVal = document.getElementById('srYieldQty').value;
     await api('/api/sub-recipes', {method:'POST', body: JSON.stringify({
@@ -878,18 +1172,18 @@ function renderSubRecipesView(){
 
   const listEl = document.getElementById('srList');
   if(subRecipesCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>Sub-Recipe</th><th>Allergens</th><th>Cost</th><th></th></tr></thead><tbody>
+    listEl.innerHTML = `<table><thead><tr><th>${t('colSubRecipe')}</th><th>${t('colAllergens')}</th><th>${t('colCost')}</th><th></th></tr></thead><tbody>
       ${subRecipesCache.map(s => `
         <tr>
           <td><b>${escapeHtml(s.name)}</b></td>
           <td>${allergenTagsHtml(s.allergens)}</td>
           <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${subRecipeCostHtml(s.costing)}</td>
-          <td><button class="danger" data-del-sr="${s.id}">Delete</button></td>
+          <td><button class="danger" data-del-sr="${s.id}">${t('delete')}</button></td>
         </tr>`).join('')}
     </tbody></table>`;
     listEl.querySelectorAll('[data-del-sr]').forEach(btn=>{
       btn.onclick = async () => {
-        if(!confirm('Delete this sub-recipe? Menu items using it will lose those allergens.')) return;
+        if(!confirm(t('confirmDeleteSubRecipe'))) return;
         await api('/api/sub-recipes/'+btn.dataset.delSr, {method:'DELETE'});
         await loadSubRecipes(); renderSubRecipesView();
       };
@@ -898,12 +1192,12 @@ function renderSubRecipesView(){
 }
 
 function subRecipeCostHtml(costing){
-  if(!costing || costing.costIncomplete) return '<span style="color:var(--ink-soft);font-family:inherit;">incomplete</span>';
-  return `$${costing.totalCost.toFixed(2)} total<br><span style="color:var(--ink-soft);">$${costing.unitCost.toFixed(4)}/${costing.unitFamily==='weight'?'g':costing.unitFamily==='volume'?'ml':'each'}</span>`;
+  if(!costing || costing.costIncomplete) return `<span style="color:var(--ink-soft);font-family:inherit;">${t('incomplete')}</span>`;
+  return `$${costing.totalCost.toFixed(2)} ${t('total')}<br><span style="color:var(--ink-soft);">$${costing.unitCost.toFixed(4)}/${costing.unitFamily==='weight'?'g':costing.unitFamily==='volume'?'ml':'each'}</span>`;
 }
 
 function menuCostSummaryHtml(costing){
-  if(!costing || costing.costIncomplete) return 'cost: incomplete';
+  if(!costing || costing.costIncomplete) return `${t('colCost').toLowerCase()}: ${t('incomplete')}`;
   let s = `$${costing.foodCost.toFixed(2)}`;
   if(costing.foodCostPercent != null) s += ` (${costing.foodCostPercent}%)`;
   return s;
@@ -913,12 +1207,12 @@ function menuCostDetailHtml(costing){
   if(!costing) return '';
   if(costing.costIncomplete){
     const missing = (costing.missingCostItems||[]).length
-      ? `Missing cost data for: ${costing.missingCostItems.map(escapeHtml).join(', ')}.`
-      : `Add quantities/units to this menu\'s ingredients to compute cost.`;
-    return `<span style="color:var(--warn);">Food cost: incomplete.</span> <span style="color:var(--ink-soft);">${missing}</span>`;
+      ? `${t('missingCostFor')} ${costing.missingCostItems.map(escapeHtml).join(', ')}.`
+      : t('addQtyUnits');
+    return `<span style="color:var(--warn);">${t('costIncompleteLabel')}</span> <span style="color:var(--ink-soft);">${missing}</span>`;
   }
-  let s = `<b>Food cost: $${costing.foodCost.toFixed(2)}</b>`;
-  if(costing.foodCostPercent != null) s += ` <span style="color:var(--ink-soft);">(${costing.foodCostPercent}% of selling price)</span>`;
+  let s = `<b>${t('foodCostLabel')} $${costing.foodCost.toFixed(2)}</b>`;
+  if(costing.foodCostPercent != null) s += ` <span style="color:var(--ink-soft);">(${costing.foodCostPercent}% ${t('ofSellingPrice')})</span>`;
   return s;
 }
 
@@ -933,28 +1227,28 @@ function renderMenuView(){
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">Create New Menu Item</h2>
-        <label>Menu item name</label>
-        <input id="newMenuName" placeholder="e.g. Chicken Katsu Curry">
-        <label>Selling price (optional, for food cost %)</label>
-        <input id="menuSellingPrice" type="number" step="0.01" placeholder="e.g. 18.00">
+        <h2 style="font-size:17px;margin-bottom:12px;">${t('createMenuItem')}</h2>
+        <label>${t('menuNameLabel')}</label>
+        <input id="newMenuName" placeholder="${t('menuNamePh')}">
+        <label>${t('sellingPriceLabel')}</label>
+        <input id="menuSellingPrice" type="number" step="0.01" placeholder="${t('sellingPricePh')}">
 
-        <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">Sub-recipes used (e.g. sauces, preps)</div>
-        <div id="menuSrChips">${subRecipesCache.length ? '' : '<span class="empty">No sub-recipes yet — optional.</span>'}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">${t('subRecipesUsed')}</div>
+        <div id="menuSrChips">${subRecipesCache.length ? '' : `<span class="empty">${t('noSubRecipesYet')}</span>`}</div>
 
-        <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">Ingredients used directly</div>
-        <input id="ingSearchInput" placeholder="Search ingredients by name...">
+        <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">${t('ingredientsUsedDirect')}</div>
+        <input id="ingSearchInput" placeholder="${t('searchByName')}">
         <div class="chip-grid" id="supplierFilterRow" style="margin-top:8px;"></div>
         <div class="ing-picker-box" id="menuIngChips"></div>
 
         <div class="row-flex" style="gap:8px;margin-top:14px;">
-          <button class="primary" style="flex:1;" id="saveMenuBtn">Save Menu Item</button>
-          <button class="ghost" id="cancelMenuBtn">Cancel</button>
+          <button class="primary" style="flex:1;" id="saveMenuBtn">${t('saveMenuItem')}</button>
+          <button class="ghost" id="cancelMenuBtn">${t('cancel')}</button>
         </div>
       </div>
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">Registered Menu Items (${menuCache.length})</h2>
-        <div id="menuList">${menuCache.length ? '' : '<div class="empty">No menu items registered yet.</div>'}</div>
+        <h2 style="font-size:17px;margin-bottom:12px;">${t('registeredMenuItems')} (${menuCache.length})</h2>
+        <div id="menuList">${menuCache.length ? '' : `<div class="empty">${t('noMenuItemsYet')}</div>`}</div>
       </div>
     </div>
   `;
@@ -998,7 +1292,7 @@ function renderMenuView(){
 
   document.getElementById('saveMenuBtn').onclick = async () => {
     const name = document.getElementById('newMenuName').value.trim();
-    if(!name){ alert('Please enter a menu item name.'); return; }
+    if(!name){ alert(t('enterMenuName')); return; }
     const sellingPriceVal = document.getElementById('menuSellingPrice').value;
     const ingredientUsages = [...selectedIngMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
     const subrecipeUsages = [...selectedSrMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
@@ -1018,20 +1312,20 @@ function renderMenuView(){
           <span class="name">${escapeHtml(m.name)}</span>
           ${dotRowHtml(m.dietFlags, m.vegFlags)}
           <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);flex-shrink:0;">${menuCostSummaryHtml(m.costing)}</span>
-          <button class="danger" data-del-menu="${m.id}" style="margin-left:8px;flex-shrink:0;">Delete</button>
+          <button class="danger" data-del-menu="${m.id}" style="margin-left:8px;flex-shrink:0;">${t('delete')}</button>
         </summary>
         <div class="item-detail">
-          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">Allergens</div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${t('colAllergens')}</div>
           ${allergenTagsHtml(m.allergens)}
           <div style="margin-top:10px;">${dietBadgesHtml(m.dietFlags)}${vegBadgesHtml(m.vegFlags)}</div>
           <div style="margin-top:10px;font-size:12.5px;">${menuCostDetailHtml(m.costing)}</div>
-          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">Updated by ${escapeHtml(m.updated_by_name||'')} · ${formatDate(m.updated_at)}</div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">${t('updatedBy')} ${escapeHtml(m.updated_by_name||'')} · ${formatDate(m.updated_at)}</div>
         </div>
       </details>`).join('');
     listEl.querySelectorAll('[data-del-menu]').forEach(btn=>{
       btn.onclick = async (e) => {
         e.preventDefault(); e.stopPropagation();
-        if(!confirm('Delete this menu item?')) return;
+        if(!confirm(t('confirmDeleteMenu'))) return;
         await api('/api/menu-items/'+btn.dataset.delMenu, {method:'DELETE'});
         await loadMenu(); renderMenuView();
       };
@@ -1044,12 +1338,12 @@ function renderInvoicesView(){
   const el = document.getElementById('view-invoices');
   el.innerHTML = `
     <div class="panel">
-      <h2 style="font-size:17px;margin-bottom:4px;">Check Invoice & Log Purchase</h2>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">Upload a photo of a supplier invoice. We'll read quantities and prices, compare against what's registered, and let you log it as a purchase for this month's spend report.</p>
-      <div class="dropzone" id="invDz">Drag & drop an invoice photo, or click to select</div>
+      <h2 style="font-size:17px;margin-bottom:4px;">${t('checkInvoice')}</h2>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">${t('invoiceHint')}</p>
+      <div class="dropzone" id="invDz">${t('invoiceDropzone')}</div>
       <input type="file" id="invFileInput" accept="image/*" capture="environment">
       <div class="preview" id="invPreview"><img id="invPreviewImg"></div>
-      <button class="primary" style="width:100%;margin-top:10px;" id="invAnalyzeBtn" disabled>Check Invoice</button>
+      <button class="primary" style="width:100%;margin-top:10px;" id="invAnalyzeBtn" disabled>${t('checkInvoiceBtn')}</button>
       <div id="invStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
       <div id="invResult" style="margin-top:14px;"></div>
     </div>
@@ -1091,7 +1385,7 @@ function renderInvoicesView(){
 
   analyzeBtn.onclick = async () => {
     analyzeBtn.disabled = true;
-    document.getElementById('invStatus').innerHTML = '<span class="spinner"></span> Reading invoice...';
+    document.getElementById('invStatus').innerHTML = `<span class="spinner"></span> ${t('invoiceReading')}`;
     document.getElementById('invResult').innerHTML = '';
     try{
       const res = await api('/api/invoices/analyze', {method:'POST', body: JSON.stringify({imageBase64: invImageBase64})});
@@ -1109,19 +1403,19 @@ function renderInvoicesView(){
 
   function renderInvoiceResults(items, detectedSupplierName){
     const box = document.getElementById('invResult');
-    if(!items.length){ box.innerHTML = '<div class="empty">No line items could be read from this photo.</div>'; return; }
+    if(!items.length){ box.innerHTML = `<div class="empty">${t('noLineItems')}</div>`; return; }
     const todayDate = new Date();
     const supplierLine = detectedSupplierName
-      ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Detected issuing supplier: <b>${escapeHtml(detectedSupplierName)}</b></div>`
-      : `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">Issuing supplier name not detected.</div>`;
-    box.innerHTML = supplierLine + `<table><thead><tr><th>Invoice Item</th><th>Code</th><th>Matched Ingredient</th><th>Qty</th><th>Unit Price</th><th>Line Total</th><th></th></tr></thead><tbody>
+      ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${t('detectedSupplier')} <b>${escapeHtml(detectedSupplierName)}</b></div>`
+      : `<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${t('supplierNotDetected')}</div>`;
+    box.innerHTML = supplierLine + `<table><thead><tr><th>${t('colInvoiceItem')}</th><th>${t('colCode')}</th><th>${t('colMatched')}</th><th>${t('colQty')}</th><th>${t('colUnitPrice')}</th><th>${t('colLineTotal')}</th><th></th></tr></thead><tbody>
       ${items.map((it, idx) => {
         let priceCell, actionCell = '';
         if(!it.matchedIngredientId){
-          priceCell = `<span style="color:var(--ink-soft);">Not registered</span>`;
+          priceCell = `<span style="color:var(--ink-soft);">${t('notRegistered')}</span>`;
         } else if(it.priceChanged){
           priceCell = `<span style="color:var(--danger);font-weight:600;">$${it.currentPrice} → $${it.unitPrice}</span>`;
-          actionCell = `<button class="ghost" data-apply-price="${idx}" style="font-size:11px;padding:5px 9px;">Update Price</button>`;
+          actionCell = `<button class="ghost" data-apply-price="${idx}" style="font-size:11px;padding:5px 9px;">${t('updatePrice')}</button>`;
         } else if(it.currentPrice != null){
           priceCell = `<span style="color:var(--safe);">$${it.currentPrice}</span>`;
         } else if(it.unitPrice != null){
@@ -1130,33 +1424,38 @@ function renderInvoicesView(){
           priceCell = `<span style="color:var(--ink-soft);">—</span>`;
         }
         const mismatchRow = it.supplierMismatch
-          ? `<tr><td colspan="7" style="border-top:none;padding-top:0;"><span class="tag" style="background:var(--warn-soft);color:var(--warn);">⚠ Registered supplier for this ingredient is "${escapeHtml(it.registeredSupplierName)}" — this invoice looks like it's from a different company. Double-check before updating the price.</span></td></tr>`
+          ? `<tr><td colspan="7" style="border-top:none;padding-top:0;"><span class="tag" style="background:var(--warn-soft);color:var(--warn);">⚠ ${t('supplierMismatchWarn')} "${escapeHtml(it.registeredSupplierName)}" — ${t('invoiceDifferentCompany')}</span></td></tr>`
+          : '';
+        const suggestRow = (!it.matchedIngredientId && it.possibleMatch)
+          ? `<tr><td colspan="7" style="border-top:none;padding-top:0;"><span class="tag" style="background:var(--accent-soft);color:var(--accent);">${t('possibly')} ${escapeHtml(it.possibleMatch.name)} (${t('oldCode')} ${escapeHtml(it.possibleMatch.oldCode||'—')}) — ${t('supplierMayHaveChanged')}</span> <button class="ghost" data-fix-code="${idx}" style="font-size:11px;padding:4px 9px;">${t('updateCodeTo')} ${escapeHtml(it.productCode||'')}</button></td></tr>`
           : '';
         return `<tr>
           <td>${escapeHtml(it.invoiceName||'')}</td>
           <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(it.productCode||'—')}</td>
-          <td>${it.matchedName ? escapeHtml(it.matchedName) : '<span style="color:var(--ink-soft);">No match</span>'}</td>
+          <td>${it.matchedName ? escapeHtml(it.matchedName) : `<span style="color:var(--ink-soft);">${t('noMatch')}</span>`}</td>
           <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${it.quantity != null ? it.quantity : '—'}</td>
           <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${priceCell}</td>
           <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${it.lineTotal != null ? '$'+it.lineTotal.toFixed(2) : '—'}</td>
           <td>${actionCell}</td>
-        </tr>${mismatchRow}`;
+        </tr>${mismatchRow}${suggestRow}`;
       }).join('')}
     </tbody></table>
+    <div id="invSuggestStatus" style="font-size:13px;margin-top:6px;"></div>
+    <div style="margin-top:2px;"></div>
     <div class="row-flex" style="gap:8px;margin-top:14px;align-items:flex-end;">
       <div style="min-width:80px;">
-        <label>Day</label>
+        <label>${t('day')}</label>
         <select id="purchaseDay">${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${d===todayDate.getDate()?'selected':''}>${d}</option>`).join('')}</select>
       </div>
       <div style="min-width:130px;">
-        <label>Month</label>
+        <label>${t('month')}</label>
         <select id="purchaseMonth">${MONTH_NAMES.map((n,i)=>`<option value="${i}" ${i===todayDate.getMonth()?'selected':''}>${n}</option>`).join('')}</select>
       </div>
       <div style="min-width:90px;">
-        <label>Year</label>
+        <label>${t('year')}</label>
         <select id="purchaseYear">${[todayDate.getFullYear(), todayDate.getFullYear()-1].map(y=>`<option value="${y}">${y}</option>`).join('')}</select>
       </div>
-      <button class="primary" id="logPurchaseBtn">Log as Purchase</button>
+      <button class="primary" id="logPurchaseBtn">${t('logAsPurchase')}</button>
     </div>
     <div id="logPurchaseStatus" style="font-size:13px;margin-top:8px;"></div>
     `;
@@ -1166,7 +1465,20 @@ function renderInvoicesView(){
         const it = items[parseInt(btn.dataset.applyPrice)];
         await api('/api/ingredients/'+it.matchedIngredientId, {method:'PUT', body: JSON.stringify({price: it.unitPrice})});
         await loadIngredients();
-        btn.outerHTML = '<span style="color:var(--safe);font-size:12px;">Updated</span>';
+        btn.outerHTML = `<span style="color:var(--safe);font-size:12px;">${t('updated')}</span>`;
+      };
+    });
+
+    box.querySelectorAll('[data-fix-code]').forEach(btn => {
+      btn.onclick = async () => {
+        const it = items[parseInt(btn.dataset.fixCode)];
+        try{
+          await api('/api/ingredients/'+it.possibleMatch.id, {method:'PUT', body: JSON.stringify({productCode: it.productCode})});
+          await loadIngredients();
+          btn.outerHTML = `<span style="color:var(--safe);font-size:12px;">${t('codeUpdated')}</span>`;
+        }catch(e){
+          document.getElementById('invSuggestStatus').innerHTML = `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
+        }
       };
     });
 
@@ -1174,7 +1486,7 @@ function renderInvoicesView(){
       const btn = document.getElementById('logPurchaseBtn');
       btn.disabled = true;
       const statusEl = document.getElementById('logPurchaseStatus');
-      statusEl.innerHTML = '<span class="spinner"></span> Saving...';
+      statusEl.innerHTML = `<span class="spinner"></span> ${t('saving')}`;
       try{
         const y = document.getElementById('purchaseYear').value;
         const mo = String(parseInt(document.getElementById('purchaseMonth').value) + 1).padStart(2,'0');
@@ -1183,7 +1495,7 @@ function renderInvoicesView(){
         const res = await api('/api/purchases', {method:'POST', body: JSON.stringify({
           date, supplierName: currentDetectedSupplier, lineItems: currentInvoiceItems,
         })});
-        statusEl.innerHTML = `<span style="color:var(--safe);">Logged $${res.purchase.total_amount.toFixed(2)} as a purchase on ${res.purchase.date}.</span>`;
+        statusEl.innerHTML = `<span style="color:var(--safe);">${t('loggedPurchase')} $${res.purchase.total_amount.toFixed(2)} ${t('asPurchaseOn')} ${res.purchase.date}.</span>`;
       }catch(e){
         statusEl.innerHTML = `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
       }finally{
@@ -1206,25 +1518,25 @@ function renderReportsView(){
 
   el.innerHTML = `
     <div class="panel">
-      <h2 style="font-size:17px;margin-bottom:12px;">Monthly Purchase Report</h2>
+      <h2 style="font-size:17px;margin-bottom:12px;">${t('monthlyReport')}</h2>
       <div class="row-flex" style="gap:8px;align-items:flex-end;">
         <div style="flex:1;min-width:120px;">
-          <label>Month</label>
+          <label>${t('month')}</label>
           <select id="reportMonthSelect">
             ${MONTH_NAMES.map((n,i) => `<option value="${i}" ${i===currentMonthIdx?'selected':''}>${n}</option>`).join('')}
           </select>
         </div>
         <div style="flex:1;min-width:90px;">
-          <label>Year</label>
+          <label>${t('year')}</label>
           <select id="reportYearSelect">
             ${yearOptions.map(y => `<option value="${y}" ${y===currentYear?'selected':''}>${y}</option>`).join('')}
           </select>
         </div>
-        <button class="ghost" id="downloadReportBtn">Download Excel</button>
+        <button class="ghost" id="downloadReportBtn">${t('downloadExcel')}</button>
       </div>
       <div id="reportSummary" style="margin-top:16px;"></div>
       <div id="reportItems" style="margin-top:10px;"></div>
-      <div style="font-size:12px;color:var(--ink-soft);margin:18px 0 6px;">Logged purchases this month</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin:18px 0 6px;">${t('loggedThisMonth')}</div>
       <div id="reportPurchases"></div>
     </div>
   `;
@@ -1240,15 +1552,15 @@ function renderReportsView(){
     const report = await api('/api/purchases/report?month='+encodeURIComponent(month));
     document.getElementById('reportSummary').innerHTML = `
       <div class="row-flex" style="gap:16px;">
-        <div><div style="font-family:'Newsreader',serif;font-size:24px;font-weight:600;">$${report.totalSpent.toFixed(2)}</div><div style="font-size:11.5px;color:var(--ink-soft);">Total spent</div></div>
-        <div><div style="font-family:'Newsreader',serif;font-size:24px;font-weight:600;">${report.purchaseCount}</div><div style="font-size:11.5px;color:var(--ink-soft);">Invoices logged</div></div>
+        <div><div style="font-family:'Newsreader',serif;font-size:24px;font-weight:600;">$${report.totalSpent.toFixed(2)}</div><div style="font-size:11.5px;color:var(--ink-soft);">${t('totalSpent')}</div></div>
+        <div><div style="font-family:'Newsreader',serif;font-size:24px;font-weight:600;">${report.purchaseCount}</div><div style="font-size:11.5px;color:var(--ink-soft);">${t('invoicesLogged')}</div></div>
       </div>
     `;
     const itemsBox = document.getElementById('reportItems');
     if(!report.items.length){
-      itemsBox.innerHTML = '<div class="empty">No purchases logged for this month yet.</div>';
+      itemsBox.innerHTML = `<div class="empty">${t('noPurchasesYet')}</div>`;
     } else {
-      itemsBox.innerHTML = `<table><thead><tr><th>Item</th><th>Code</th><th>Supplier</th><th>Quantity</th><th>Total Spent</th></tr></thead><tbody>
+      itemsBox.innerHTML = `<table><thead><tr><th>${t('colItem')}</th><th>${t('colCode')}</th><th>${t('colSupplier')}</th><th>${t('colQuantity')}</th><th>${t('colTotalSpent')}</th></tr></thead><tbody>
         ${report.items.map(it => `<tr>
           <td><b>${escapeHtml(it.name)}</b></td>
           <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(it.productCode||'—')}</td>
@@ -1262,16 +1574,16 @@ function renderReportsView(){
     const purchases = await api('/api/purchases?month='+encodeURIComponent(month));
     const purchasesBox = document.getElementById('reportPurchases');
     if(!purchases.purchases.length){
-      purchasesBox.innerHTML = '<div class="empty">Nothing logged yet.</div>';
+      purchasesBox.innerHTML = `<div class="empty">${t('nothingLoggedYet')}</div>`;
     } else {
       purchasesBox.innerHTML = purchases.purchases.map(p => `
         <details class="menu-item-card">
           <summary>
-            <span class="name" style="font-size:14px;">${escapeHtml(p.date)} · ${escapeHtml(p.supplier_name||'Unknown supplier')}</span>
+            <span class="name" style="font-size:14px;">${escapeHtml(p.date)} · ${escapeHtml(p.supplier_name||t('unknownSupplier'))}</span>
             <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);flex-shrink:0;">$${p.total_amount.toFixed(2)}</span>
           </summary>
           <div class="item-detail">
-            ${p.line_items.map(li => `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:3px;">${escapeHtml(li.matchedName||li.itemName)} — qty ${li.quantity!=null?li.quantity:'?'} @ $${li.unitPrice!=null?li.unitPrice:'?'} = $${li.lineTotal!=null?li.lineTotal.toFixed(2):'?'}</div>`).join('')}
+            ${p.line_items.map(li => `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:3px;">${escapeHtml(li.matchedName||li.itemName)} — ${t('qty')} ${li.quantity!=null?li.quantity:'?'} @ $${li.unitPrice!=null?li.unitPrice:'?'} = $${li.lineTotal!=null?li.lineTotal.toFixed(2):'?'}</div>`).join('')}
           </div>
         </details>
       `).join('');
@@ -1293,18 +1605,18 @@ function renderStaffLinkView(){
   const url = `${location.origin}/staff/${ME.company.slug}?code=${ME.company.staffCode}`;
   el.innerHTML = `
     <div class="panel">
-      <h2 style="font-size:17px;">Staff / Front-of-house lookup screen</h2>
-      <p style="font-size:13.5px;color:var(--ink-soft);">Bookmark this link on a tablet or POS. No login needed — search menu items, filter by diet, and see allergens at a glance.</p>
+      <h2 style="font-size:17px;">${t('staffLinkTitle')}</h2>
+      <p style="font-size:13.5px;color:var(--ink-soft);">${t('staffLinkHint')}</p>
       <div class="staff-link-box">
         <code>${url}</code><br><br>
-        <button class="ghost" id="copyLinkBtn">Copy Link</button>
+        <button class="ghost" id="copyLinkBtn">${t('copyLink')}</button>
       </div>
     </div>
   `;
   document.getElementById('copyLinkBtn').onclick = () => {
     navigator.clipboard.writeText(url);
-    document.getElementById('copyLinkBtn').textContent = 'Copied!';
-    setTimeout(()=>{ document.getElementById('copyLinkBtn').textContent='Copy Link'; }, 1500);
+    document.getElementById('copyLinkBtn').textContent = t('copied');
+    setTimeout(()=>{ document.getElementById('copyLinkBtn').textContent=t('copyLink'); }, 1500);
   };
 }
 
@@ -1315,19 +1627,19 @@ async function loadAdmins(){
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">Add Admin Account</h2>
-        <label>Name</label><input id="newAdminName">
-        <label>Email</label><input id="newAdminEmail" type="email">
-        <label>Password (min 8 characters)</label><input id="newAdminPw" type="password">
-        <button class="primary" style="width:100%;margin-top:14px;" id="addAdminBtn">Create Admin Account</button>
+        <h2 style="font-size:17px;margin-bottom:12px;">${t('addAdminAccount')}</h2>
+        <label>${t('nameLabel')}</label><input id="newAdminName">
+        <label>${t('emailLabel')}</label><input id="newAdminEmail" type="email">
+        <label>${t('passwordMinLabel')}</label><input id="newAdminPw" type="password">
+        <button class="primary" style="width:100%;margin-top:14px;" id="addAdminBtn">${t('createAdminAccount')}</button>
         <div class="error-box" id="adminError"></div>
       </div>
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">Account List</h2>
-        <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody>
+        <h2 style="font-size:17px;margin-bottom:12px;">${t('accountList')}</h2>
+        <table><thead><tr><th>${t('colName')}</th><th>${t('emailLabel')}</th><th>${t('colRole')}</th><th></th></tr></thead><tbody>
           ${d.users.map(u => `<tr>
-            <td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td>${u.role==='owner'?'Owner':'Admin'}</td>
-            <td>${u.role!=='owner' ? `<button class="danger" data-del-user="${u.id}">Delete</button>` : ''}</td>
+            <td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td>${u.role==='owner'?t('roleOwner'):t('roleAdmin')}</td>
+            <td>${u.role!=='owner' ? `<button class="danger" data-del-user="${u.id}">${t('delete')}</button>` : ''}</td>
           </tr>`).join('')}
         </tbody></table>
       </div>
@@ -1347,7 +1659,7 @@ async function loadAdmins(){
   };
   el.querySelectorAll('[data-del-user]').forEach(btn=>{
     btn.onclick = async () => {
-      if(!confirm('Delete this account?')) return;
+      if(!confirm(t('confirmDeleteAccount'))) return;
       await api('/api/admins/'+btn.dataset.delUser, {method:'DELETE'});
       loadAdmins();
     };
@@ -1358,19 +1670,19 @@ async function loadAdmins(){
 async function loadAudit(){
   const d = await api('/api/audit-log');
   const el = document.getElementById('view-audit');
-  const actionLabel = {created:'Created', updated:'Updated', deleted:'Deleted'};
-  const typeLabel = {ingredient:'Ingredient', menu_item:'Menu Item', admin_account:'Admin Account', sub_recipe:'Sub-Recipe'};
+  const actionLabel = {created:t('created'), updated:t('updatedAction'), deleted:t('deletedAction')};
+  const typeLabel = {ingredient:t('ingredientLabel'), menu_item:t('menuItemLabel'), admin_account:t('adminAccountLabel'), sub_recipe:t('subRecipeLabel')};
   el.innerHTML = `
     <div class="panel">
-      <h2 style="font-size:17px;margin-bottom:12px;">Change Log</h2>
-      ${d.log.length ? `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th></tr></thead><tbody>
+      <h2 style="font-size:17px;margin-bottom:12px;">${t('changeLogTitle')}</h2>
+      ${d.log.length ? `<table><thead><tr><th>${t('colTime')}</th><th>${t('colUser')}</th><th>${t('colAction')}</th><th>${t('colTarget')}</th></tr></thead><tbody>
         ${d.log.map(l => `<tr>
           <td style="font-size:12.5px;color:var(--ink-soft);">${formatDate(l.created_at)}</td>
           <td><b>${escapeHtml(l.user_name)}</b></td>
           <td>${actionLabel[l.action]||l.action} · ${typeLabel[l.target_type]||l.target_type}</td>
           <td>${escapeHtml(l.target_name)}</td>
         </tr>`).join('')}
-      </tbody></table>` : '<div class="empty">No records yet.</div>'}
+      </tbody></table>` : `<div class="empty">${t('noRecordsYet')}</div>`}
     </div>
   `;
 }
