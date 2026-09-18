@@ -222,7 +222,9 @@ const T = {
     save: "Save",
     colName: "Name", colSupplierCode: "Supplier / Code", colPrice: "Price", colAllergens: "Allergens",
     colDiet: "Diet", colVerified: "Verified", colUpdated: "Updated", colActions: "",
-    photo: "Photo", reverify: "Re-verify", delete: "Delete",
+    photo: "Photo", reverify: "Re-verify", editInfo: "Edit Info", delete: "Delete",
+    editingInfo: "Editing info: ", editInfoHint: "Editing details without a photo — the last verified date and photo won't change.",
+    colAliases: "Aliases",
     createSubRecipe: "Create Sub-Recipe",
     subRecipeHint: "A prep or sauce made from ingredients (e.g. \"Curry Sauce\"), not sold on its own — used inside one or more menu items.",
     subRecipeNameLabel: "Sub-recipe name", subRecipeNamePh: "e.g. Curry Sauce",
@@ -331,7 +333,9 @@ const T = {
     save: "저장",
     colName: "이름", colSupplierCode: "공급업체 / 코드", colPrice: "가격", colAllergens: "알러지원",
     colDiet: "식단", colVerified: "확인일", colUpdated: "수정", colActions: "",
-    photo: "사진", reverify: "재확인", delete: "삭제",
+    photo: "사진", reverify: "재확인", editInfo: "정보 수정", delete: "삭제",
+    editingInfo: "정보 수정 중: ", editInfoHint: "사진 없이 정보만 수정합니다 — 최종 확인일과 사진은 변경되지 않아요.",
+    colAliases: "별칭",
     createSubRecipe: "서브레시피 만들기",
     subRecipeHint: "재료로 만드는 소스/프렙(예: \"커리 소스\")으로, 그 자체로 파는 게 아니라 메뉴 안에서 쓰입니다.",
     subRecipeNameLabel: "서브레시피 이름", subRecipeNamePh: "예: 커리 소스",
@@ -436,6 +440,7 @@ function renderCurrentTab(){
 }
 
 let reverifyTarget = null;
+let editOnlyMode = false; // true when using "Edit Info" (no photo required) rather than "Re-verify"
 let selectedForDelete = new Set();
 let ingredientsCache = [];
 let subRecipesCache = [];
@@ -773,13 +778,13 @@ function renderIngredientTable(nameQuery, supplierQuery){
     ${filtered.map(ing => `
       <tr>
         <td><input type="checkbox" class="ing-check" data-id="${ing.id}" ${selectedForDelete.has(ing.id)?'checked':''}></td>
-        <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">${t('photo')}</button>` : ''}</td>
+        <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">${t('photo')}</button>` : ''}${ing.aliases && ing.aliases.length ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${t('colAliases')}: ${escapeHtml(ing.aliases.join(', '))}</div>` : ''}</td>
         <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
         <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${priceCellHtml(ing)}</td>
         <td>${allergenTagsHtml(ing.allergens)}</td>
         <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
         <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at, ing.is_free)}</td>
-        <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">${t('reverify')}</button> <button class="danger" data-del-ing="${ing.id}">${t('delete')}</button></td>
+        <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">${t('reverify')}</button> <button class="ghost" data-edit-info="${ing.id}" style="padding:5px 9px;font-size:11px;">${t('editInfo')}</button> <button class="danger" data-del-ing="${ing.id}">${t('delete')}</button></td>
       </tr>`).join('')}
   </tbody></table>`;
 
@@ -833,7 +838,16 @@ function renderIngredientTable(nameQuery, supplierQuery){
 
   listEl.querySelectorAll('[data-reverify]').forEach(btn=>{
     btn.onclick = () => {
+      editOnlyMode = false;
       reverifyTarget = ingredientsCache.find(i => i.id === btn.dataset.reverify) || null;
+      renderIngredientsView();
+      window.scrollTo({top:0, behavior:'smooth'});
+    };
+  });
+  listEl.querySelectorAll('[data-edit-info]').forEach(btn=>{
+    btn.onclick = () => {
+      editOnlyMode = true;
+      reverifyTarget = ingredientsCache.find(i => i.id === btn.dataset.editInfo) || null;
       renderIngredientsView();
       window.scrollTo({top:0, behavior:'smooth'});
     };
@@ -863,12 +877,13 @@ function renderIngredientsView(){
     <div class="row-flex">
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">${t('registerPhoto')}</h2>
-        ${reverifyTarget ? `<div style="background:var(--accent-soft);border-radius:7px;padding:9px 12px;font-size:13px;margin-bottom:12px;">Re-verifying: <b>${escapeHtml(reverifyTarget.name)}</b> <button class="ghost" id="cancelReverifyBtn" style="padding:2px 8px;font-size:11px;margin-left:6px;">${t('cancel')}</button></div>` : ''}
+        ${reverifyTarget ? `<div style="background:var(--accent-soft);border-radius:7px;padding:9px 12px;font-size:13px;margin-bottom:12px;">${editOnlyMode ? t('editingInfo') : 'Re-verifying: '}<b>${escapeHtml(reverifyTarget.name)}</b> <button class="ghost" id="cancelReverifyBtn" style="padding:2px 8px;font-size:11px;margin-left:6px;">${t('cancel')}</button>${editOnlyMode ? `<p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('editInfoHint')}</p>` : ''}</div>` : ''}
+        ${!editOnlyMode ? `
         <div class="dropzone" id="dz">${t('dropzone')}</div>
         <input type="file" id="fileInput" accept="image/*" capture="environment">
         <div class="preview" id="preview"><img id="previewImg"></div>
         <button class="primary" style="width:100%;margin-top:10px;" id="analyzeBtn" disabled>${t('analyzeBtn')}</button>
-        <div id="analyzeStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>
+        <div id="analyzeStatus" style="font-size:13px;color:var(--ink-soft);margin-top:8px;"></div>` : ''}
         <div id="analyzeResult"></div>
         ${!reverifyTarget ? `
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
@@ -912,7 +927,7 @@ function renderIngredientsView(){
   const analyzeBtn = document.getElementById('analyzeBtn');
 
   const cancelBtn = document.getElementById('cancelReverifyBtn');
-  if(cancelBtn) cancelBtn.onclick = () => { reverifyTarget = null; renderIngredientsView(); };
+  if(cancelBtn) cancelBtn.onclick = () => { reverifyTarget = null; editOnlyMode = false; renderIngredientsView(); };
 
   const noPhotoToggleBtn = document.getElementById('noPhotoToggleBtn');
   if(noPhotoToggleBtn){
@@ -936,11 +951,13 @@ function renderIngredientsView(){
     };
   }
 
-  dz.onclick = () => fileInput.click();
-  dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); };
-  dz.ondragleave = () => dz.classList.remove('drag');
-  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
-  fileInput.onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+  if(dz){
+    dz.onclick = () => fileInput.click();
+    dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); };
+    dz.ondragleave = () => dz.classList.remove('drag');
+    dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+    fileInput.onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+  }
 
   function handleFile(file){
     const reader = new FileReader();
@@ -963,150 +980,168 @@ function renderIngredientsView(){
     reader.readAsDataURL(file);
   }
 
-  analyzeBtn.onclick = async () => {
-    analyzeBtn.disabled = true;
-    document.getElementById('analyzeStatus').innerHTML = `<span class="spinner"></span> ${t('analyzing')}`;
-    document.getElementById('analyzeResult').innerHTML = '';
-    try{
-      currentAnalysis = await api('/api/ingredients/analyze', {method:'POST', body: JSON.stringify({imageBase64: currentImageBase64})});
-      document.getElementById('analyzeStatus').textContent = '';
-      document.getElementById('analyzeResult').innerHTML = `
-        <label>${t('noPhotoNameLabel')}</label>
-        <input id="newIngName" placeholder="${t('ingNamePh')}" value="${reverifyTarget ? escapeHtml(reverifyTarget.name) : ''}">
-        <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">${t('detectedAllergens')}</div>
-        <div>${allergenTagsHtml(currentAnalysis.allergens, 26)}</div>
-        ${currentAnalysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(currentAnalysis.notes)}</div>` : ''}
-        <label>${t('dietCategoryLabel')}</label>
-        <select id="newIngDietCategory">
-          ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}" ${reverifyTarget && (reverifyTarget.diet_category||'')===v ? 'selected':''}>${l}</option>`).join('')}
+  function renderIngFormFields(analysis, photoBase64){
+    document.getElementById('analyzeResult').innerHTML = `
+      <label>${t('noPhotoNameLabel')}</label>
+      <input id="newIngName" placeholder="${t('ingNamePh')}" value="${reverifyTarget ? escapeHtml(reverifyTarget.name) : ''}">
+      <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">${t('detectedAllergens')}</div>
+      <div>${allergenTagsHtml(analysis.allergens, 26)}</div>
+      ${analysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(analysis.notes)}</div>` : ''}
+      <label>${t('dietCategoryLabel')}</label>
+      <select id="newIngDietCategory">
+        ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}" ${reverifyTarget && (reverifyTarget.diet_category||'')===v ? 'selected':''}>${l}</option>`).join('')}
+      </select>
+
+      <label>${t('aliasesLabel')}</label>
+      <input id="newIngAliases" placeholder="${t('aliasesPh')}" value="${reverifyTarget && reverifyTarget.aliases ? escapeHtml(reverifyTarget.aliases.join(', ')) : ''}">
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:4px 0 0;">${t('aliasesHint')}</p>
+
+      <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
+        <input type="checkbox" id="isFreeIngredient" style="width:auto;" ${reverifyTarget && reverifyTarget.is_free ? 'checked':''}> ${t('isFreeLabel')}
+      </label>
+
+      <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;">
+        <input type="checkbox" id="isSupplierProduct" style="width:auto;" ${reverifyTarget && reverifyTarget.supplier_id ? 'checked':''}> ${t('isSupplierLabel')}
+      </label>
+      <div id="supplierFields" style="display:${reverifyTarget && reverifyTarget.supplier_id ? 'block':'none'};margin-top:8px;">
+        <label>${t('productCodeLabel')}</label>
+        <input id="newIngCode" placeholder="${t('productCodePh')}" value="${reverifyTarget && reverifyTarget.product_code ? escapeHtml(reverifyTarget.product_code) : ''}">
+        <div id="codeLookupMsg" style="font-size:12.5px;margin-top:4px;"></div>
+        <label>${t('supplierLabel')}</label>
+        <select id="newIngSupplier">
+          <option value="">${t('selectPlaceholder')}</option>
+          ${suppliersCache.map(s => `<option value="${s.id}" ${reverifyTarget && reverifyTarget.supplier_id===s.id ? 'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+          <option value="__new__">${t('addNewSupplier')}</option>
         </select>
-
-        <label>${t('aliasesLabel')}</label>
-        <input id="newIngAliases" placeholder="${t('aliasesPh')}" value="${reverifyTarget && reverifyTarget.aliases ? escapeHtml(reverifyTarget.aliases.join(', ')) : ''}">
-        <p style="font-size:11.5px;color:var(--ink-soft);margin:4px 0 0;">${t('aliasesHint')}</p>
-
-        <label style="display:flex;align-items:center;gap:7px;margin-top:16px;cursor:pointer;">
-          <input type="checkbox" id="isFreeIngredient" style="width:auto;" ${reverifyTarget && reverifyTarget.is_free ? 'checked':''}> ${t('isFreeLabel')}
-        </label>
-
-        <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;">
-          <input type="checkbox" id="isSupplierProduct" style="width:auto;" ${reverifyTarget && reverifyTarget.supplier_id ? 'checked':''}> ${t('isSupplierLabel')}
-        </label>
-        <div id="supplierFields" style="display:${reverifyTarget && reverifyTarget.supplier_id ? 'block':'none'};margin-top:8px;">
-          <label>${t('productCodeLabel')}</label>
-          <input id="newIngCode" placeholder="${t('productCodePh')}" value="${reverifyTarget && reverifyTarget.product_code ? escapeHtml(reverifyTarget.product_code) : ''}">
-          <div id="codeLookupMsg" style="font-size:12.5px;margin-top:4px;"></div>
-          <label>${t('supplierLabel')}</label>
-          <select id="newIngSupplier">
-            <option value="">${t('selectPlaceholder')}</option>
-            ${suppliersCache.map(s => `<option value="${s.id}" ${reverifyTarget && reverifyTarget.supplier_id===s.id ? 'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
-            <option value="__new__">${t('addNewSupplier')}</option>
-          </select>
-          <input id="newSupplierName" placeholder="${t('newSupplierPh')}" style="display:none;margin-top:6px;">
-          <div class="row-flex" style="gap:8px;margin-top:8px;">
-            <div style="flex:1;min-width:100px;">
-              <label>${t('packagePriceLabel')}</label>
-              <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 76.00" value="${reverifyTarget && reverifyTarget.price!=null ? reverifyTarget.price : ''}">
-            </div>
-            <div style="flex:1;min-width:80px;">
-              <label>${t('packageSizeLabel')}</label>
-              <input id="newIngPackageQty" type="number" step="any" placeholder="e.g. 20" value="${reverifyTarget && reverifyTarget.package_qty!=null ? reverifyTarget.package_qty : ''}">
-            </div>
-            <div style="flex:1;min-width:70px;">
-              <label>${t('unitLabel')}</label>
-              <select id="newIngUnit">
-                ${UNIT_OPTIONS.map(u => `<option value="${u}" ${reverifyTarget && reverifyTarget.unit===u ? 'selected':''}>${u}</option>`).join('')}
-              </select>
-            </div>
+        <input id="newSupplierName" placeholder="${t('newSupplierPh')}" style="display:none;margin-top:6px;">
+        <div class="row-flex" style="gap:8px;margin-top:8px;">
+          <div style="flex:1;min-width:100px;">
+            <label>${t('packagePriceLabel')}</label>
+            <input id="newIngPrice" type="number" step="0.01" placeholder="e.g. 76.00" value="${reverifyTarget && reverifyTarget.price!=null ? reverifyTarget.price : ''}">
           </div>
-          <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('packageHint')}</p>
+          <div style="flex:1;min-width:80px;">
+            <label>${t('packageSizeLabel')}</label>
+            <input id="newIngPackageQty" type="number" step="any" placeholder="e.g. 20" value="${reverifyTarget && reverifyTarget.package_qty!=null ? reverifyTarget.package_qty : ''}">
+          </div>
+          <div style="flex:1;min-width:70px;">
+            <label>${t('unitLabel')}</label>
+            <select id="newIngUnit">
+              ${UNIT_OPTIONS.map(u => `<option value="${u}" ${reverifyTarget && reverifyTarget.unit===u ? 'selected':''}>${u}</option>`).join('')}
+            </select>
+          </div>
         </div>
-        <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">${reverifyTarget ? t('saveReverify') : t('saveResult')}</button>
-      `;
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('packageHint')}</p>
+      </div>
+      <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">${reverifyTarget ? t('saveReverify') : t('saveResult')}</button>
+    `;
 
-      const freeToggle = document.getElementById('isFreeIngredient');
-      const toggle = document.getElementById('isSupplierProduct');
-      const fields = document.getElementById('supplierFields');
-      toggle.onchange = () => { fields.style.display = toggle.checked ? 'block' : 'none'; };
-      freeToggle.onchange = () => {
-        if(freeToggle.checked){ toggle.checked = false; fields.style.display = 'none'; }
+    const freeToggle = document.getElementById('isFreeIngredient');
+    const toggle = document.getElementById('isSupplierProduct');
+    const fields = document.getElementById('supplierFields');
+    toggle.onchange = () => { fields.style.display = toggle.checked ? 'block' : 'none'; };
+    freeToggle.onchange = () => {
+      if(freeToggle.checked){ toggle.checked = false; fields.style.display = 'none'; }
+    };
+
+    const codeInput = document.getElementById('newIngCode');
+    codeInput.addEventListener('blur', async () => {
+      const code = codeInput.value.trim();
+      const msgEl = document.getElementById('codeLookupMsg');
+      if(!code){ msgEl.textContent=''; return; }
+      const res = await api('/api/ingredients/lookup?code=' + encodeURIComponent(code));
+      if(res.ingredient){
+        msgEl.style.color = 'var(--warn)';
+        msgEl.textContent = `${t('codeAlreadyRegistered')} (${res.ingredient.name} · ${res.ingredient.supplier_name||''}). ${t('savingCreatesEntry')}`;
+      } else {
+        msgEl.style.color = 'var(--safe)';
+        msgEl.textContent = t('codeNotRegisteredYet');
+      }
+    });
+
+    document.getElementById('newIngSupplier').onchange = (e) => {
+      document.getElementById('newSupplierName').style.display = e.target.value === '__new__' ? 'block' : 'none';
+    };
+
+    document.getElementById('saveIngBtn').onclick = async () => {
+      const name = document.getElementById('newIngName').value.trim();
+      if(!name){ alert(t('enterIngredientName')); return; }
+      const dietCategory = document.getElementById('newIngDietCategory').value || null;
+      const isFree = freeToggle.checked;
+
+      let supplierId = null, productCode = null, price = null, unit = null, packageQty = null, supplierTouched = true;
+      if(toggle.checked && !isFree){
+        productCode = document.getElementById('newIngCode').value.trim() || null;
+        const priceVal = document.getElementById('newIngPrice').value;
+        price = priceVal ? parseFloat(priceVal) : null;
+        const pkgVal = document.getElementById('newIngPackageQty').value;
+        packageQty = pkgVal ? parseFloat(pkgVal) : null;
+        unit = document.getElementById('newIngUnit').value || null;
+        const supplierSelect = document.getElementById('newIngSupplier').value;
+        if(supplierSelect === '__new__'){
+          const newName = document.getElementById('newSupplierName').value.trim();
+          if(!newName){ alert(t('enterSupplierName')); return; }
+          const r = await api('/api/suppliers', {method:'POST', body: JSON.stringify({name:newName})});
+          supplierId = r.supplier.id;
+          await loadSuppliers();
+        } else if(supplierSelect){
+          supplierId = supplierSelect;
+        }
+      } else if(reverifyTarget && !isFree){
+        // Re-verifying/editing and the supplier checkbox is unchecked: leave supplier/code/price/unit untouched.
+        supplierTouched = false;
+      }
+
+      const body = {
+        name, rawText: analysis.raw_text, allergens: analysis.allergens,
+        overallConfidence: analysis.overall_confidence, notes: analysis.notes,
+        dietCategory, isFree,
+        aliases: document.getElementById('newIngAliases').value.split(',').map(s=>s.trim()).filter(Boolean),
       };
+      if(photoBase64) body.photoBase64 = photoBase64; // only touch photo/last-verified when one was actually captured
+      if(isFree){ body.supplierId = null; body.productCode = null; body.price = null; body.unit = null; body.packageQty = null; }
+      else if(supplierTouched){ body.supplierId = supplierId; body.productCode = productCode; body.price = price; body.unit = unit; body.packageQty = packageQty; }
 
-      const codeInput = document.getElementById('newIngCode');
-      codeInput.addEventListener('blur', async () => {
-        const code = codeInput.value.trim();
-        const msgEl = document.getElementById('codeLookupMsg');
-        if(!code){ msgEl.textContent=''; return; }
-        const res = await api('/api/ingredients/lookup?code=' + encodeURIComponent(code));
-        if(res.ingredient){
-          msgEl.style.color = 'var(--warn)';
-          msgEl.textContent = `${t('codeAlreadyRegistered')} (${res.ingredient.name} · ${res.ingredient.supplier_name||''}). ${t('savingCreatesEntry')}`;
+      try{
+        if(reverifyTarget){
+          await api('/api/ingredients/'+reverifyTarget.id, {method:'PUT', body: JSON.stringify(body)});
         } else {
-          msgEl.style.color = 'var(--safe)';
-          msgEl.textContent = t('codeNotRegisteredYet');
+          await api('/api/ingredients', {method:'POST', body: JSON.stringify(body)});
         }
-      });
+      }catch(e){ alert(e.message); return; }
+      reverifyTarget = null;
+      editOnlyMode = false;
+      await loadIngredients();
+      renderIngredientsView();
+    };
+  }
 
-      document.getElementById('newIngSupplier').onchange = (e) => {
-        document.getElementById('newSupplierName').style.display = e.target.value === '__new__' ? 'block' : 'none';
-      };
+  if(editOnlyMode && reverifyTarget){
+    // Edit-info mode: show the same form pre-filled from the existing record, no photo required.
+    renderIngFormFields({
+      allergens: reverifyTarget.allergens || [],
+      notes: reverifyTarget.notes || '',
+      raw_text: reverifyTarget.raw_text || '',
+      overall_confidence: reverifyTarget.overall_confidence,
+    }, null);
+  }
 
-      document.getElementById('saveIngBtn').onclick = async () => {
-        const name = document.getElementById('newIngName').value.trim();
-        if(!name){ alert(t('enterIngredientName')); return; }
-        const dietCategory = document.getElementById('newIngDietCategory').value || null;
-        const isFree = freeToggle.checked;
-
-        let supplierId = null, productCode = null, price = null, unit = null, packageQty = null, supplierTouched = true;
-        if(toggle.checked && !isFree){
-          productCode = document.getElementById('newIngCode').value.trim() || null;
-          const priceVal = document.getElementById('newIngPrice').value;
-          price = priceVal ? parseFloat(priceVal) : null;
-          const pkgVal = document.getElementById('newIngPackageQty').value;
-          packageQty = pkgVal ? parseFloat(pkgVal) : null;
-          unit = document.getElementById('newIngUnit').value || null;
-          const supplierSelect = document.getElementById('newIngSupplier').value;
-          if(supplierSelect === '__new__'){
-            const newName = document.getElementById('newSupplierName').value.trim();
-            if(!newName){ alert(t('enterSupplierName')); return; }
-            const r = await api('/api/suppliers', {method:'POST', body: JSON.stringify({name:newName})});
-            supplierId = r.supplier.id;
-            await loadSuppliers();
-          } else if(supplierSelect){
-            supplierId = supplierSelect;
-          }
-        } else if(reverifyTarget && !isFree){
-          // Re-verifying and the supplier checkbox is unchecked: leave supplier/code/price/unit untouched.
-          supplierTouched = false;
-        }
-
-        const body = {
-          name, rawText: currentAnalysis.raw_text, allergens: currentAnalysis.allergens,
-          overallConfidence: currentAnalysis.overall_confidence, notes: currentAnalysis.notes,
-          photoBase64: currentImageBase64, dietCategory, isFree,
-          aliases: document.getElementById('newIngAliases').value.split(',').map(s=>s.trim()).filter(Boolean),
-        };
-        if(isFree){ body.supplierId = null; body.productCode = null; body.price = null; body.unit = null; body.packageQty = null; }
-        else if(supplierTouched){ body.supplierId = supplierId; body.productCode = productCode; body.price = price; body.unit = unit; body.packageQty = packageQty; }
-
-        try{
-          if(reverifyTarget){
-            await api('/api/ingredients/'+reverifyTarget.id, {method:'PUT', body: JSON.stringify(body)});
-          } else {
-            await api('/api/ingredients', {method:'POST', body: JSON.stringify(body)});
-          }
-        }catch(e){ alert(e.message); return; }
-        reverifyTarget = null;
-        await loadIngredients();
-        renderIngredientsView();
-      };
-    }catch(e){
-      document.getElementById('analyzeStatus').textContent = '';
-      document.getElementById('analyzeResult').innerHTML = `<div class="error-box" style="display:block;">${escapeHtml(e.message)}</div>`;
-    }finally{
-      analyzeBtn.disabled = false;
-    }
-  };
+  if(analyzeBtn){
+    analyzeBtn.onclick = async () => {
+      analyzeBtn.disabled = true;
+      document.getElementById('analyzeStatus').innerHTML = `<span class="spinner"></span> ${t('analyzing')}`;
+      document.getElementById('analyzeResult').innerHTML = '';
+      try{
+        currentAnalysis = await api('/api/ingredients/analyze', {method:'POST', body: JSON.stringify({imageBase64: currentImageBase64})});
+        document.getElementById('analyzeStatus').textContent = '';
+        renderIngFormFields(currentAnalysis, currentImageBase64);
+      }catch(e){
+        document.getElementById('analyzeStatus').textContent = '';
+        document.getElementById('analyzeResult').innerHTML = `<div class="error-box" style="display:block;">${escapeHtml(e.message)}</div>`;
+      }finally{
+        analyzeBtn.disabled = false;
+      }
+    };
+  }
 }
 
 // ---------- Sub-Recipes ----------
