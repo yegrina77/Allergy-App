@@ -290,3 +290,23 @@ def bulk_apply_gst(user):
         log_action(user["company_id"], user, "updated", "ingredient", action_desc)
 
     return jsonify({"updatedCount": updated_count, "gstApplied": new_state})
+
+
+# ------------------------------------------------------------------
+# One-time fix for companies that ran the OLD (non-toggle) bulk-apply
+# button before this flag existed: their prices already have GST
+# applied, but the flag doesn't know that yet. Visiting this URL once
+# (while logged in, e.g. in a new browser tab) sets the flag to match
+# reality WITHOUT touching any prices, so the toggle button shows the
+# correct state from then on.
+# ------------------------------------------------------------------
+@bp.route("/api/ingredients/mark-gst-applied", methods=["GET"])
+@login_required()
+def mark_gst_applied(user):
+    auth = load_auth()
+    company = auth["companies"].get(user["company_id"])
+    if company is not None:
+        company["gst_applied"] = True
+        save_auth(auth)
+    return jsonify({"ok": True, "gstApplied": True,
+                     "note": "Flag set. No prices were changed. You can close this tab."})
