@@ -217,6 +217,10 @@ const T = {
     packageHint: "e.g. price $76, size 20, unit kg = a 20kg bag costs $76",
     gstToggleLabel: "Price excludes GST (auto add 15% on save)",
     gstInclusivePreview: "GST-inclusive price to be saved: ",
+    applyGstAllBtn: "Apply GST +15% to all prices",
+    confirmApplyGstAll: "This will multiply every ingredient's saved price by 1.15 (GST). Only run this once, on prices that are currently GST-exclusive. Continue?",
+    applyingGst: "Applying…",
+    gstAppliedMsg: "Updated {n} ingredient prices with GST.",
     saveResult: "Save this result", saveReverify: "Save Re-verification",
     noPhotoToggle: "No label to photograph? (free items like tap water, or add a photo later)",
     noPhotoNameLabel: "Ingredient name", noPhotoNamePh: "e.g. Water, or Curry Roux Hot",
@@ -330,6 +334,10 @@ const T = {
     packageHint: "예: 가격 $76, 크기 20, 단위 kg = 20kg 포대가 $76",
     gstToggleLabel: "GST 별도 가격 (저장 시 자동으로 +15%)",
     gstInclusivePreview: "저장될 GST 포함 가격: ",
+    applyGstAllBtn: "전체 가격에 GST +15% 일괄 적용",
+    confirmApplyGstAll: "저장된 모든 재료의 가격에 1.15를 곱해서(GST 15%) 일괄 적용합니다. 현재 가격이 GST 별도인 경우에만, 한 번만 실행하세요. 계속할까요?",
+    applyingGst: "적용 중…",
+    gstAppliedMsg: "{n}개 재료 가격에 GST를 적용했습니다.",
     saveResult: "이 결과로 저장", saveReverify: "재확인 결과 저장",
     noPhotoToggle: "찍을 라벨이 없나요? (수돗물 같은 무료 재료, 또는 사진은 나중에)",
     noPhotoNameLabel: "재료 이름", noPhotoNamePh: "예: 물, 또는 Curry Roux Hot",
@@ -914,6 +922,7 @@ function renderIngredientsView(){
           <input id="ingNameSearch" placeholder="${t('searchByName')}" style="flex:1;min-width:140px;">
           <input id="ingSupplierSearch" placeholder="${t('searchBySupplier')}" style="flex:1;min-width:140px;">
         </div>
+        <button class="ghost" id="applyGstAllBtn" style="font-size:11.5px;margin-top:8px;">${t('applyGstAllBtn')}</button>
         <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : `<div class="empty">${t('noIngredientsYet')}</div>`}</div>
       </div>
     </div>
@@ -923,6 +932,26 @@ function renderIngredientsView(){
   document.getElementById('ingSupplierSearch').addEventListener('input', () => runIngredientSearch());
   function runIngredientSearch(){
     renderIngredientTable(document.getElementById('ingNameSearch').value, document.getElementById('ingSupplierSearch').value);
+  }
+
+  const applyGstAllBtn = document.getElementById('applyGstAllBtn');
+  if(applyGstAllBtn){
+    applyGstAllBtn.onclick = async () => {
+      if(!confirm(t('confirmApplyGstAll'))) return;
+      applyGstAllBtn.disabled = true;
+      const originalText = applyGstAllBtn.textContent;
+      applyGstAllBtn.innerHTML = `<span class="spinner"></span> ${t('applyingGst')}`;
+      try{
+        const res = await api('/api/ingredients/bulk-apply-gst', {method:'POST', body: '{}'});
+        await loadIngredients();
+        renderIngredientsView();
+        alert(t('gstAppliedMsg').replace('{n}', res.updatedCount));
+      }catch(e){
+        alert(e.message);
+        applyGstAllBtn.disabled = false;
+        applyGstAllBtn.textContent = originalText;
+      }
+    };
   }
 
   let currentImageBase64 = null, currentAnalysis = null;
