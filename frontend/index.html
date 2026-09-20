@@ -218,9 +218,12 @@ const T = {
     gstToggleLabel: "Price excludes GST (auto add 15% on save)",
     gstInclusivePreview: "GST-inclusive price to be saved: ",
     applyGstAllBtn: "Apply GST +15% to all prices",
-    confirmApplyGstAll: "This will multiply every ingredient's saved price by 1.15 (GST). Only run this once, on prices that are currently GST-exclusive. Continue?",
+    undoGstAllBtn: "✓ GST applied — click to undo",
+    confirmApplyGstAll: "This will multiply every ingredient's saved price by 1.15 (GST). Continue?",
+    confirmUndoGstAll: "This will divide every ingredient's saved price back by 1.15, undoing the GST that was applied. Continue?",
     applyingGst: "Applying…",
-    gstAppliedMsg: "Updated {n} ingredient prices with GST.",
+    gstAppliedMsg: "Updated {n} ingredient prices with GST applied.",
+    gstUndoneMsg: "Updated {n} ingredient prices — GST removed again.",
     saveResult: "Save this result", saveReverify: "Save Re-verification",
     noPhotoToggle: "No label to photograph? (free items like tap water, or add a photo later)",
     noPhotoNameLabel: "Ingredient name", noPhotoNamePh: "e.g. Water, or Curry Roux Hot",
@@ -335,9 +338,12 @@ const T = {
     gstToggleLabel: "GST 별도 가격 (저장 시 자동으로 +15%)",
     gstInclusivePreview: "저장될 GST 포함 가격: ",
     applyGstAllBtn: "전체 가격에 GST +15% 일괄 적용",
-    confirmApplyGstAll: "저장된 모든 재료의 가격에 1.15를 곱해서(GST 15%) 일괄 적용합니다. 현재 가격이 GST 별도인 경우에만, 한 번만 실행하세요. 계속할까요?",
+    undoGstAllBtn: "✓ GST 적용됨 — 누르면 되돌리기",
+    confirmApplyGstAll: "저장된 모든 재료의 가격에 1.15를 곱해서(GST 15%) 일괄 적용합니다. 계속할까요?",
+    confirmUndoGstAll: "저장된 모든 재료의 가격을 1.15로 나눠서 GST 적용 전으로 되돌립니다. 계속할까요?",
     applyingGst: "적용 중…",
     gstAppliedMsg: "{n}개 재료 가격에 GST를 적용했습니다.",
+    gstUndoneMsg: "{n}개 재료 가격에서 GST를 되돌렸습니다.",
     saveResult: "이 결과로 저장", saveReverify: "재확인 결과 저장",
     noPhotoToggle: "찍을 라벨이 없나요? (수돗물 같은 무료 재료, 또는 사진은 나중에)",
     noPhotoNameLabel: "재료 이름", noPhotoNamePh: "예: 물, 또는 Curry Roux Hot",
@@ -922,7 +928,7 @@ function renderIngredientsView(){
           <input id="ingNameSearch" placeholder="${t('searchByName')}" style="flex:1;min-width:140px;">
           <input id="ingSupplierSearch" placeholder="${t('searchBySupplier')}" style="flex:1;min-width:140px;">
         </div>
-        <button class="ghost" id="applyGstAllBtn" style="font-size:11.5px;margin-top:8px;">${t('applyGstAllBtn')}</button>
+        <button class="ghost" id="applyGstAllBtn" style="font-size:11.5px;margin-top:8px;${ME.company.gstApplied ? 'color:var(--safe);border-color:var(--safe);' : ''}">${ME.company.gstApplied ? t('undoGstAllBtn') : t('applyGstAllBtn')}</button>
         <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : `<div class="empty">${t('noIngredientsYet')}</div>`}</div>
       </div>
     </div>
@@ -937,15 +943,17 @@ function renderIngredientsView(){
   const applyGstAllBtn = document.getElementById('applyGstAllBtn');
   if(applyGstAllBtn){
     applyGstAllBtn.onclick = async () => {
-      if(!confirm(t('confirmApplyGstAll'))) return;
+      const willApply = !ME.company.gstApplied;
+      if(!confirm(willApply ? t('confirmApplyGstAll') : t('confirmUndoGstAll'))) return;
       applyGstAllBtn.disabled = true;
       const originalText = applyGstAllBtn.textContent;
       applyGstAllBtn.innerHTML = `<span class="spinner"></span> ${t('applyingGst')}`;
       try{
         const res = await api('/api/ingredients/bulk-apply-gst', {method:'POST', body: '{}'});
+        ME.company.gstApplied = res.gstApplied;
         await loadIngredients();
         renderIngredientsView();
-        alert(t('gstAppliedMsg').replace('{n}', res.updatedCount));
+        alert((res.gstApplied ? t('gstAppliedMsg') : t('gstUndoneMsg')).replace('{n}', res.updatedCount));
       }catch(e){
         alert(e.message);
         applyGstAllBtn.disabled = false;
