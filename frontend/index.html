@@ -215,6 +215,8 @@ const T = {
     newSupplierPh: "New supplier name",
     packagePriceLabel: "Package price", packageSizeLabel: "Package size", unitLabel: "Unit",
     packageHint: "e.g. price $76, size 20, unit kg = a 20kg bag costs $76",
+    gstToggleLabel: "Price excludes GST (auto add 15% on save)",
+    gstInclusivePreview: "GST-inclusive price to be saved: ",
     saveResult: "Save this result", saveReverify: "Save Re-verification",
     noPhotoToggle: "No label to photograph? (free items like tap water, or add a photo later)",
     noPhotoNameLabel: "Ingredient name", noPhotoNamePh: "e.g. Water, or Curry Roux Hot",
@@ -326,6 +328,8 @@ const T = {
     newSupplierPh: "새 공급업체 이름",
     packagePriceLabel: "포장 가격", packageSizeLabel: "포장 크기", unitLabel: "단위",
     packageHint: "예: 가격 $76, 크기 20, 단위 kg = 20kg 포대가 $76",
+    gstToggleLabel: "GST 별도 가격 (저장 시 자동으로 +15%)",
+    gstInclusivePreview: "저장될 GST 포함 가격: ",
     saveResult: "이 결과로 저장", saveReverify: "재확인 결과 저장",
     noPhotoToggle: "찍을 라벨이 없나요? (수돗물 같은 무료 재료, 또는 사진은 나중에)",
     noPhotoNameLabel: "재료 이름", noPhotoNamePh: "예: 물, 또는 Curry Roux Hot",
@@ -1031,6 +1035,10 @@ function renderIngredientsView(){
           </div>
         </div>
         <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('packageHint')}</p>
+        <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;">
+          <input type="checkbox" id="priceExGst" style="width:auto;"> ${t('gstToggleLabel')}
+        </label>
+        <p id="gstPreview" style="font-size:12px;color:var(--ink-soft);margin:4px 0 0;display:none;"></p>
       </div>
       <button class="primary" style="width:100%;margin-top:12px;" id="saveIngBtn">${reverifyTarget ? t('saveReverify') : t('saveResult')}</button>
     `;
@@ -1062,6 +1070,22 @@ function renderIngredientsView(){
       document.getElementById('newSupplierName').style.display = e.target.value === '__new__' ? 'block' : 'none';
     };
 
+    const GST_RATE = 0.15;
+    const priceInput = document.getElementById('newIngPrice');
+    const gstToggle = document.getElementById('priceExGst');
+    const gstPreview = document.getElementById('gstPreview');
+    const updateGstPreview = () => {
+      const raw = parseFloat(priceInput.value);
+      if(gstToggle.checked && !isNaN(raw)){
+        gstPreview.style.display = 'block';
+        gstPreview.textContent = t('gstInclusivePreview') + '$' + (raw * (1 + GST_RATE)).toFixed(2);
+      } else {
+        gstPreview.style.display = 'none';
+      }
+    };
+    priceInput.addEventListener('input', updateGstPreview);
+    gstToggle.addEventListener('change', updateGstPreview);
+
     document.getElementById('saveIngBtn').onclick = async () => {
       const name = document.getElementById('newIngName').value.trim();
       if(!name){ alert(t('enterIngredientName')); return; }
@@ -1073,6 +1097,9 @@ function renderIngredientsView(){
         productCode = document.getElementById('newIngCode').value.trim() || null;
         const priceVal = document.getElementById('newIngPrice').value;
         price = priceVal ? parseFloat(priceVal) : null;
+        if(price != null && document.getElementById('priceExGst').checked){
+          price = Math.round(price * (1 + GST_RATE) * 100) / 100;
+        }
         const pkgVal = document.getElementById('newIngPackageQty').value;
         packageQty = pkgVal ? parseFloat(pkgVal) : null;
         unit = document.getElementById('newIngUnit').value || null;
