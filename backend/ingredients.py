@@ -10,6 +10,8 @@ from helpers import (
     _ingredient_public,
 )
 
+GST_RATE = 0.15
+
 bp = Blueprint("ingredients", __name__)
 
 
@@ -244,3 +246,32 @@ def bulk_delete_ingredients(user):
         log_action(user["company_id"], user, "deleted", "ingredient", f"{deleted_count} ingredients (bulk delete)")
 
     return jsonify({"deletedCount": deleted_count})
+
+
+# ------------------------------------------------------------------
+# One-time bulk fix: multiply every priced ingredient's price by 1.15
+# (used when prices were entered GST-exclusive and need to become
+# GST-inclusive for recipe costing). Safe to call only once — calling
+# it again would apply GST a second time.
+# ------------------------------------------------------------------
+@bp.route("/api/ingredients/bulk-apply-gst", methods=["POST"])
+@login_required()
+def bulk_apply_gst(user):
+    ids = list_ingredient_ids(user["company_id"])
+    ingredients = load_ingredients_many(ids)
+
+    commands = []
+    updated_count = 0
+    for ing in ingredients:
+        if ing.get("price") is None:
+            continue
+        ing["price"] = round(ing["price"] * (1 + GST_RATE), 2)
+        commands.append(["SET", f"allergy_ingredient:{ing['id']}", json.dumps(ing)])
+        updated_count += 1
+
+    if commands:
+        _raw_pipeline(commands)
+        log_action(user["company_id"], user, "updated", "ingredient",
+                    f"Applied 15% GST to {updated_count} ingredient prices (bulk)")
+
+    return jsonify({"updatedCount": updated_count})
