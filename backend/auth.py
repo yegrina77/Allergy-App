@@ -90,7 +90,10 @@ def me():
     company = auth["companies"].get(user["company_id"])
     return jsonify({
         "user": {"id": user["id"], "name": user["name"], "email": user["email"], "role": user["role"]},
-        "company": {"name": company["name"], "slug": company["slug"], "staffCode": company["staff_code"]},
+        "company": {
+            "name": company["name"], "slug": company["slug"], "staffCode": company["staff_code"],
+            "gstApplied": bool(company.get("gst_applied")),
+        },
     })
 
 

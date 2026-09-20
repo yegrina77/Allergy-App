@@ -7,7 +7,7 @@ from helpers import (
     ANTHROPIC_API_KEY, ALLERGENS, login_required, new_id, now_iso,
     list_ingredient_ids, load_ingredient, load_ingredients_many,
     load_supplier, _raw_set, _raw_delete, _raw_pipeline, log_action,
-    _ingredient_public,
+    _ingredient_public, load_auth, save_auth,
 )
 
 GST_RATE = 0.15
@@ -249,14 +249,19 @@ def bulk_delete_ingredients(user):
 
 
 # ------------------------------------------------------------------
-# One-time bulk fix: multiply every priced ingredient's price by 1.15
-# (used when prices were entered GST-exclusive and need to become
-# GST-inclusive for recipe costing). Safe to call only once — calling
-# it again would apply GST a second time.
+# Bulk GST toggle: multiplies every priced ingredient's price by 1.15,
+# or divides back by 1.15 if it was already applied. The company's
+# gst_applied flag tracks which state we're in, so the button always
+# knows whether to apply or undo, and can't accidentally double-apply.
 # ------------------------------------------------------------------
 @bp.route("/api/ingredients/bulk-apply-gst", methods=["POST"])
 @login_required()
 def bulk_apply_gst(user):
+    auth = load_auth()
+    company = auth["companies"].get(user["company_id"])
+    currently_applied = bool(company.get("gst_applied")) if company else False
+    new_state = not currently_applied
+
     ids = list_ingredient_ids(user["company_id"])
     ingredients = load_ingredients_many(ids)
 
@@ -265,13 +270,23 @@ def bulk_apply_gst(user):
     for ing in ingredients:
         if ing.get("price") is None:
             continue
-        ing["price"] = round(ing["price"] * (1 + GST_RATE), 2)
+        if new_state:
+            ing["price"] = round(ing["price"] * (1 + GST_RATE), 2)
+        else:
+            ing["price"] = round(ing["price"] / (1 + GST_RATE), 2)
         commands.append(["SET", f"allergy_ingredient:{ing['id']}", json.dumps(ing)])
         updated_count += 1
 
     if commands:
         _raw_pipeline(commands)
-        log_action(user["company_id"], user, "updated", "ingredient",
-                    f"Applied 15% GST to {updated_count} ingredient prices (bulk)")
 
-    return jsonify({"updatedCount": updated_count})
+    if company is not None:
+        company["gst_applied"] = new_state
+        save_auth(auth)
+
+    if commands:
+        action_desc = f"Applied 15% GST to {updated_count} ingredient prices (bulk)" if new_state \
+            else f"Reverted 15% GST on {updated_count} ingredient prices (bulk)"
+        log_action(user["company_id"], user, "updated", "ingredient", action_desc)
+
+    return jsonify({"updatedCount": updated_count, "gstApplied": new_state})
