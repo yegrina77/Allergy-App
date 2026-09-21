@@ -274,6 +274,27 @@ def compute_allergens(ingredient_records):
     return out
 
 
+def compute_may_contain(ingredient_records):
+    """Precautionary ('may contain' / 'trace of') allergens, kept separate from
+    compute_allergens() on purpose: these are cross-contact warnings, not
+    confirmed ingredients, so they must never feed into compute_diet_flags()
+    or any safe/unsafe verdict — only shown to staff as extra context."""
+    merged = {}
+    contributors = {}
+    for ing in ingredient_records:
+        for a in ing.get("may_contain", []):
+            key = a["name"]
+            if key not in merged or a.get("confidence") == "high":
+                merged[key] = a
+            contributors.setdefault(key, set()).add(ing["name"])
+    out = []
+    for name, a in merged.items():
+        d = dict(a)
+        d["ingredients"] = sorted(contributors.get(name, []))
+        out.append(d)
+    return out
+
+
 def compute_diet_flags(allergens_list, ingredient_records=None):
     def norm(s):
         return (s or "").strip().lower()
@@ -437,6 +458,7 @@ def build_menu_responses_batch(items):
         records = gather_from_cache(m)
         allergens = compute_allergens(records)
         d["allergens"] = allergens
+        d["mayContain"] = compute_may_contain(records)
         d["dietFlags"] = compute_diet_flags(allergens, records)
         d["vegFlags"] = compute_veg_flags(records)
         d["costing"] = compute_menu_costing(m, ingredient_by_id, subrecipe_costing_by_id)

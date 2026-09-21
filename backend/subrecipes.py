@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 from helpers import (
     login_required, new_id, now_iso,
     list_subrecipe_ids, load_subrecipe, load_subrecipes_many, load_ingredients_many,
-    extract_usage_ids, compute_allergens, compute_subrecipe_costing,
+    extract_usage_ids, compute_allergens, compute_may_contain, compute_subrecipe_costing,
     _raw_set, _raw_delete, log_action,
 )
 
@@ -28,6 +28,7 @@ def list_sub_recipes(user):
         ids_for_allergens = extract_usage_ids(s, "ingredient_usages", "ingredient_ids")
         records = [ingredient_by_id[i] for i in ids_for_allergens if i in ingredient_by_id]
         d["allergens"] = compute_allergens(records)
+        d["mayContain"] = compute_may_contain(records)
         d["costing"] = compute_subrecipe_costing(s, ingredient_by_id)
         out.append(d)
     return jsonify({"subRecipes": out})

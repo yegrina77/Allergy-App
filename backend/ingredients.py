@@ -35,12 +35,14 @@ Tasks:
 1. Read the ingredient list text from the photo as accurately as possible, exactly as printed. If part of it is unreadable, omit it rather than guessing.
 2. Among the ingredients you read, flag any that match the allergens below, from the New Zealand/Australia Food Standards Code (Standard 1.2.3, PEAL). Even if the wording doesn't exactly match the list (e.g. whey, casein -> Milk), flag it if it is derived from that allergen:
 {", ".join(ALLERGENS)}
-3. If the photo is blurry or only partially visible and you are not confident, set confidence to "low". Never invent content that is not in the photo.
+3. Separately, look for any precautionary / cross-contact statement on the label — phrasing like "May contain...", "Trace of...", "Made in a facility that also processes...", "May be present:". These are NOT ingredients actually in the product; list any allergens from the list above that they mention as "may_contain", kept completely separate from "allergens" in step 2. If the label has no such statement, return an empty array.
+4. If the photo is blurry or only partially visible and you are not confident, set confidence to "low". Never invent content that is not in the photo.
 
 Respond ONLY in the following JSON format. No markdown, no explanation, no code block — pure JSON only:
 {{
   "raw_text": "the ingredient list exactly as read from the photo",
   "allergens": [{{"name": "exact English name from the list above", "confidence": "high|medium|low", "source_ingredient": "the original ingredient text that triggered this allergen"}}],
+  "may_contain": [{{"name": "exact English name from the list above", "confidence": "high|medium|low", "source_ingredient": "the exact precautionary statement text that triggered this"}}],
   "overall_confidence": "high|medium|low",
   "notes": "any notes on photo quality or reading difficulty, in English (empty string if none)"
 }}"""
@@ -134,6 +136,7 @@ def create_ingredient(user):
         "id": ing_id, "company_id": user["company_id"], "name": name,
         "raw_text": data.get("rawText", ""),
         "allergens": data.get("allergens", []),
+        "may_contain": data.get("mayContain", []),
         "overall_confidence": data.get("overallConfidence", ""),
         "notes": data.get("notes", ""),
         "supplier_id": data.get("supplierId"),
@@ -185,6 +188,7 @@ def update_ingredient(user, ing_id):
         "name": name,
         "raw_text": data.get("rawText", existing.get("raw_text")),
         "allergens": data.get("allergens", existing.get("allergens", [])),
+        "may_contain": data.get("mayContain", existing.get("may_contain", [])),
         "overall_confidence": data.get("overallConfidence", existing.get("overall_confidence")),
         "notes": data.get("notes", existing.get("notes")),
         "supplier_id": data.get("supplierId", existing.get("supplier_id")),
