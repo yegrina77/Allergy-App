@@ -907,6 +907,8 @@ function renderIngredientTable(nameQuery, supplierQuery){
 
 function renderIngredientsView(){
   const el = document.getElementById('view-ingredients');
+  const prevListEl = document.getElementById('ingredientList');
+  const savedListScroll = prevListEl ? prevListEl.scrollTop : 0;
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
@@ -950,6 +952,8 @@ function renderIngredientsView(){
     </div>
   `;
   renderIngredientTable('', '');
+  const newListEl = document.getElementById('ingredientList');
+  if(newListEl) newListEl.scrollTop = savedListScroll;
   document.getElementById('ingNameSearch').addEventListener('input', () => runIngredientSearch());
   document.getElementById('ingSupplierSearch').addEventListener('input', () => runIngredientSearch());
   function runIngredientSearch(){
