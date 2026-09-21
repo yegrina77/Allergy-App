@@ -61,6 +61,7 @@
   td{padding:9px 8px;border-bottom:1px solid rgba(243,238,228,0.06);vertical-align:top;}
   .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:16px;font-size:12px;font-weight:500;background:var(--warn-soft);color:var(--warn);margin:2px 3px 2px 0;}
   .tag.low{background:var(--neutral-soft);color:var(--neutral);}
+  .tag.maybe{background:transparent;border:1px dashed var(--ink-soft);color:var(--ink-soft);}
   .more-toggle{display:inline-block;}
   .more-toggle summary{list-style:none;font-size:11.5px;color:var(--ink-soft);cursor:pointer;}
   .more-toggle summary::-webkit-details-marker{display:none;}
@@ -205,6 +206,7 @@ const T = {
     registeredIngredients: "Registered Ingredients",
     searchByName: "Search by ingredient name...", searchBySupplier: "Search by supplier name...",
     ingNamePh: "e.g. Soy Sauce, Curry (generic name)", detectedAllergens: "Detected allergens",
+    mayContainLabel: "May contain (trace)", mayContainHint: "Precautionary / cross-contact statements from the label. Shown for staff reference only — not counted in the diet-safety flags above.",
     dietCategoryLabel: "Diet category (for Vegetarian/Vegan)",
     aliasesLabel: "Search aliases (optional, comma-separated)", aliasesPh: "e.g. breadcrumbs, panko, crumb coating",
     aliasesHint: "Short/common names to also find this by when picking recipe ingredients — useful since supplier names are often long.",
@@ -325,6 +327,7 @@ const T = {
     registeredIngredients: "등록된 재료",
     searchByName: "재료명으로 검색...", searchBySupplier: "공급업체명으로 검색...",
     ingNamePh: "예: 간장, 커리 (일반 이름으로)", detectedAllergens: "감지된 알러지원",
+    mayContainLabel: "May contain (교차오염 가능)", mayContainHint: "라벨의 \"May contain / Trace of\" 문구예요. 참고용으로만 표시되고, 위 알러지 안전 판정(초록/빨강)에는 포함되지 않습니다.",
     dietCategoryLabel: "식단 분류 (Vegetarian/Vegan용)",
     aliasesLabel: "검색 별칭 (선택, 콤마로 구분)", aliasesPh: "예: 빵가루, 판코, 튀김옷가루",
     aliasesHint: "레시피에 재료 넣을 때 이 이름으로도 찾을 수 있게 하는 짧은 별칭이에요 — 공급업체명이 보통 길어서 유용합니다.",
@@ -600,6 +603,19 @@ function allergenTagsHtml(allergens, maxShow){
   return html;
 }
 
+function mayContainTagsHtml(mayContain, maxShow){
+  maxShow = maxShow || 5;
+  if(!mayContain || !mayContain.length) return '';
+  const shown = mayContain.slice(0, maxShow);
+  const rest = mayContain.slice(maxShow);
+  let html = `<div style="margin-top:4px;font-size:11px;color:var(--ink-soft);">${t('mayContainLabel')}: </div>`;
+  html += shown.map(a => `<span class="tag maybe">${escapeHtml(a.name)}</span>`).join('');
+  if(rest.length){
+    html += `<details class="more-toggle"><summary>+${rest.length} ${t('more')}</summary>${rest.map(a => `<span class="tag maybe">${escapeHtml(a.name)}</span>`).join('')}</details>`;
+  }
+  return html;
+}
+
 const DIET_FLAG_UI = [
   {key:'gluten', labelKey:'lblGlutenFree'},
   {key:'dairy', labelKey:'lblDairyFree'},
@@ -799,7 +815,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
         <td><b>${escapeHtml(ing.name)}</b>${ing.has_photo ? ` <button class="ghost" data-view-photo="${ing.id}" style="padding:2px 8px;font-size:11px;">${t('photo')}</button>` : ''}${ing.aliases && ing.aliases.length ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${t('colAliases')}: ${escapeHtml(ing.aliases.join(', '))}</div>` : ''}</td>
         <td style="font-size:12.5px;color:var(--ink-soft);">${ing.supplier_name ? escapeHtml(ing.supplier_name) : '—'}${ing.product_code ? '<br><span style="font-family:\'IBM Plex Mono\',monospace;">'+escapeHtml(ing.product_code)+'</span>' : ''}</td>
         <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${priceCellHtml(ing)}</td>
-        <td>${allergenTagsHtml(ing.allergens)}</td>
+        <td>${allergenTagsHtml(ing.allergens)}${mayContainTagsHtml(ing.may_contain)}</td>
         <td style="font-size:12px;color:var(--ink-soft);">${escapeHtml((DIET_CATEGORY_LABELS[ing.diet_category||''] || 'Not set / Unknown').split(' — ')[0])}</td>
         <td style="font-size:12px;">${verifiedBadgeHtml(ing.last_verified_at, ing.is_free)}</td>
         <td><button class="ghost" data-reverify="${ing.id}" style="padding:5px 9px;font-size:11px;">${t('reverify')}</button> <button class="ghost" data-edit-info="${ing.id}" style="padding:5px 9px;font-size:11px;">${t('editInfo')}</button> <button class="danger" data-del-ing="${ing.id}">${t('delete')}</button></td>
@@ -1027,6 +1043,7 @@ function renderIngredientsView(){
       <input id="newIngName" placeholder="${t('ingNamePh')}" value="${reverifyTarget ? escapeHtml(reverifyTarget.name) : ''}">
       <div style="font-size:12px;color:var(--ink-soft);margin:10px 0 4px;">${t('detectedAllergens')}</div>
       <div>${allergenTagsHtml(analysis.allergens, 26)}</div>
+      ${analysis.may_contain && analysis.may_contain.length ? `<div style="margin-top:8px;">${mayContainTagsHtml(analysis.may_contain, 26)}<p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0;">${t('mayContainHint')}</p></div>` : ''}
       ${analysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(analysis.notes)}</div>` : ''}
       <label>${t('dietCategoryLabel')}</label>
       <select id="newIngDietCategory">
@@ -1157,6 +1174,7 @@ function renderIngredientsView(){
 
       const body = {
         name, rawText: analysis.raw_text, allergens: analysis.allergens,
+        mayContain: analysis.may_contain || [],
         overallConfidence: analysis.overall_confidence, notes: analysis.notes,
         dietCategory, isFree,
         aliases: document.getElementById('newIngAliases').value.split(',').map(s=>s.trim()).filter(Boolean),
@@ -1183,6 +1201,7 @@ function renderIngredientsView(){
     // Edit-info mode: show the same form pre-filled from the existing record, no photo required.
     renderIngFormFields({
       allergens: reverifyTarget.allergens || [],
+      may_contain: reverifyTarget.may_contain || [],
       notes: reverifyTarget.notes || '',
       raw_text: reverifyTarget.raw_text || '',
       overall_confidence: reverifyTarget.overall_confidence,
@@ -1275,7 +1294,7 @@ function renderSubRecipesView(){
       ${subRecipesCache.map(s => `
         <tr>
           <td><b>${escapeHtml(s.name)}</b></td>
-          <td>${allergenTagsHtml(s.allergens)}</td>
+          <td>${allergenTagsHtml(s.allergens)}${mayContainTagsHtml(s.mayContain)}</td>
           <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${subRecipeCostHtml(s.costing)}</td>
           <td><button class="danger" data-del-sr="${s.id}">${t('delete')}</button></td>
         </tr>`).join('')}
@@ -1416,6 +1435,7 @@ function renderMenuView(){
         <div class="item-detail">
           <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${t('colAllergens')}</div>
           ${allergenTagsHtml(m.allergens)}
+          ${m.mayContain && m.mayContain.length ? `<div style="margin-top:6px;">${mayContainTagsHtml(m.mayContain)}</div>` : ''}
           <div style="margin-top:10px;">${dietBadgesHtml(m.dietFlags)}${vegBadgesHtml(m.vegFlags)}</div>
           <div style="margin-top:10px;font-size:12.5px;">${menuCostDetailHtml(m.costing)}</div>
           <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">${t('updatedBy')} ${escapeHtml(m.updated_by_name||'')} · ${formatDate(m.updated_at)}</div>
