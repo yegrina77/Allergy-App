@@ -15,6 +15,31 @@ GST_RATE = 0.15
 bp = Blueprint("ingredients", __name__)
 
 
+def _dedupe_allergen_list(items):
+    """Collapse duplicate allergen entries that share the same name (e.g. the AI
+    flagged "Wheat" from two different lines on the same label) into one tag,
+    keeping the highest confidence seen and combining the source ingredient
+    text so no information is lost."""
+    conf_rank = {"high": 3, "medium": 2, "low": 1}
+    merged = {}
+    order = []
+    for a in (items or []):
+        name = (a.get("name") or "").strip()
+        if not name:
+            continue
+        if name not in merged:
+            merged[name] = dict(a)
+            order.append(name)
+        else:
+            existing = merged[name]
+            srcs = {(existing.get("source_ingredient") or "").strip(), (a.get("source_ingredient") or "").strip()}
+            srcs.discard("")
+            existing["source_ingredient"] = "; ".join(sorted(srcs))
+            if conf_rank.get(a.get("confidence"), 0) > conf_rank.get(existing.get("confidence"), 0):
+                existing["confidence"] = a.get("confidence")
+    return [merged[n] for n in order]
+
+
 # ------------------------------------------------------------------
 # AI analysis (does not save anything, just returns a suggestion)
 # ------------------------------------------------------------------
@@ -78,6 +103,9 @@ Respond ONLY in the following JSON format. No markdown, no explanation, no code 
     except Exception as e:
         return jsonify({"error": f"AI analysis error: {e}"}), 502
 
+    parsed["allergens"] = _dedupe_allergen_list(parsed.get("allergens"))
+    parsed["may_contain"] = _dedupe_allergen_list(parsed.get("may_contain"))
+
     return jsonify(parsed)
 
 
@@ -135,8 +163,8 @@ def create_ingredient(user):
     ingredient = {
         "id": ing_id, "company_id": user["company_id"], "name": name,
         "raw_text": data.get("rawText", ""),
-        "allergens": data.get("allergens", []),
-        "may_contain": data.get("mayContain", []),
+        "allergens": _dedupe_allergen_list(data.get("allergens", [])),
+        "may_contain": _dedupe_allergen_list(data.get("mayContain", [])),
         "overall_confidence": data.get("overallConfidence", ""),
         "notes": data.get("notes", ""),
         "supplier_id": data.get("supplierId"),
@@ -187,8 +215,8 @@ def update_ingredient(user, ing_id):
     existing.update({
         "name": name,
         "raw_text": data.get("rawText", existing.get("raw_text")),
-        "allergens": data.get("allergens", existing.get("allergens", [])),
-        "may_contain": data.get("mayContain", existing.get("may_contain", [])),
+        "allergens": _dedupe_allergen_list(data.get("allergens", existing.get("allergens", []))),
+        "may_contain": _dedupe_allergen_list(data.get("mayContain", existing.get("may_contain", []))),
         "overall_confidence": data.get("overallConfidence", existing.get("overall_confidence")),
         "notes": data.get("notes", existing.get("notes")),
         "supplier_id": data.get("supplierId", existing.get("supplier_id")),
@@ -314,3 +342,35 @@ def mark_gst_applied(user):
         save_auth(auth)
     return jsonify({"ok": True, "gstApplied": True,
                      "note": "Flag set. No prices were changed. You can close this tab."})
+
+
+# ------------------------------------------------------------------
+# One-time cleanup for ingredients saved before duplicate allergen tags
+# were de-duplicated on save (e.g. "Wheat" showing twice because the AI
+# found it mentioned in two different places on the label). Visiting
+# this URL once collapses duplicate names within each ingredient's own
+# allergens/may_contain lists, without changing anything else.
+# ------------------------------------------------------------------
+@bp.route("/api/ingredients/dedupe-allergens", methods=["GET"])
+@login_required()
+def dedupe_allergens(user):
+    ids = list_ingredient_ids(user["company_id"])
+    ingredients = load_ingredients_many(ids)
+
+    commands = []
+    fixed_count = 0
+    for ing in ingredients:
+        new_allergens = _dedupe_allergen_list(ing.get("allergens", []))
+        new_may_contain = _dedupe_allergen_list(ing.get("may_contain", []))
+        if new_allergens != ing.get("allergens", []) or new_may_contain != ing.get("may_contain", []):
+            ing["allergens"] = new_allergens
+            ing["may_contain"] = new_may_contain
+            commands.append(["SET", f"allergy_ingredient:{ing['id']}", json.dumps(ing)])
+            fixed_count += 1
+
+    if commands:
+        _raw_pipeline(commands)
+        log_action(user["company_id"], user, "updated", "ingredient", f"Removed duplicate allergen tags on {fixed_count} ingredients (cleanup)")
+
+    return jsonify({"ok": True, "fixedCount": fixed_count,
+                     "note": "Duplicate allergen tags removed. You can close this tab."})
