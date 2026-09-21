@@ -784,7 +784,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
   const allVisibleSelected = filtered.length > 0 && filtered.every(i => selectedForDelete.has(i.id));
 
   listEl.innerHTML = `
-    <div id="bulkDeleteToolbar" style="display:${selectedForDelete.size ? 'flex':'none'};align-items:center;gap:10px;margin-bottom:8px;">
+    <div id="bulkDeleteToolbar" style="display:${selectedForDelete.size ? 'flex':'none'};align-items:center;gap:10px;margin-bottom:8px;position:sticky;top:0;z-index:2;background:var(--bg);padding:6px 0;border-bottom:1px solid var(--border);">
       <span style="font-size:12.5px;color:var(--ink-soft);"><b id="bulkSelCount">${selectedForDelete.size}</b> ${t('nSelected')}</span>
       <button class="danger" id="bulkDeleteBtn">${t('deleteSelected')}</button>
       <button class="ghost" id="bulkClearBtn" style="padding:5px 9px;font-size:11px;">${t('clear')}</button>
