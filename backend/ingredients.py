@@ -61,13 +61,19 @@ Tasks:
 2. Among the ingredients you read, flag any that match the allergens below, from the New Zealand/Australia Food Standards Code (Standard 1.2.3, PEAL). Even if the wording doesn't exactly match the list (e.g. whey, casein -> Milk), flag it if it is derived from that allergen:
 {", ".join(ALLERGENS)}
 3. Separately, look for any precautionary / cross-contact statement on the label — phrasing like "May contain...", "Trace of...", "Made in a facility that also processes...", "May be present:". These are NOT ingredients actually in the product; list any allergens from the list above that they mention as "may_contain", kept completely separate from "allergens" in step 2. If the label has no such statement, return an empty array.
-4. If the photo is blurry or only partially visible and you are not confident, set confidence to "low". Never invent content that is not in the photo.
+4. Classify the product itself for vegetarian/vegan purposes, based only on what's actually in the ingredient list (ignore "may contain" statements for this):
+   - "meat_fish" if it contains any meat, poultry, fish, seafood, or their extracts/derivatives (e.g. "meat extract", "beef stock", "gelatine", "anchovy", "fish sauce", "lard", "chicken fat", "rennet" from animal source).
+   - "animal_non_meat" if it contains animal-derived ingredients but no meat/fish/poultry (e.g. milk, cheese, egg, honey, butter).
+   - "plant" if everything in the list is plant-derived / has no animal ingredients at all.
+   - If you genuinely cannot tell from the text, omit this field rather than guessing.
+5. If the photo is blurry or only partially visible and you are not confident, set confidence to "low". Never invent content that is not in the photo.
 
 Respond ONLY in the following JSON format. No markdown, no explanation, no code block — pure JSON only:
 {{
   "raw_text": "the ingredient list exactly as read from the photo",
   "allergens": [{{"name": "exact English name from the list above", "confidence": "high|medium|low", "source_ingredient": "the original ingredient text that triggered this allergen"}}],
   "may_contain": [{{"name": "exact English name from the list above", "confidence": "high|medium|low", "source_ingredient": "the exact precautionary statement text that triggered this"}}],
+  "suggested_diet_category": "plant|animal_non_meat|meat_fish or omit if unsure",
   "overall_confidence": "high|medium|low",
   "notes": "any notes on photo quality or reading difficulty, in English (empty string if none)"
 }}"""
@@ -105,6 +111,8 @@ Respond ONLY in the following JSON format. No markdown, no explanation, no code 
 
     parsed["allergens"] = _dedupe_allergen_list(parsed.get("allergens"))
     parsed["may_contain"] = _dedupe_allergen_list(parsed.get("may_contain"))
+    if parsed.get("suggested_diet_category") not in ("plant", "animal_non_meat", "meat_fish"):
+        parsed["suggested_diet_category"] = None
 
     return jsonify(parsed)
 
@@ -374,3 +382,87 @@ def dedupe_allergens(user):
 
     return jsonify({"ok": True, "fixedCount": fixed_count,
                      "note": "Duplicate allergen tags removed. You can close this tab."})
+
+
+def _classify_diet_category_from_text(raw_text):
+    """Text-only classification (no photo re-upload needed) for ingredients that
+    already have a stored raw_text from a previous label analysis, so existing
+    ingredients can be backfilled with a suggested diet category."""
+    prompt = f"""Classify this food product's ingredient list for vegetarian/vegan purposes, based only on what's actually listed (ignore any "may contain" / precautionary statements):
+- "meat_fish" if it contains any meat, poultry, fish, seafood, or their extracts/derivatives (e.g. "meat extract", "beef stock", "gelatine", "anchovy", "fish sauce", "lard", "chicken fat", animal-derived "rennet").
+- "animal_non_meat" if it contains animal-derived ingredients but no meat/fish/poultry (e.g. milk, cheese, egg, honey, butter).
+- "plant" if everything listed is plant-derived / has no animal ingredients at all.
+- "unknown" if you genuinely cannot tell from the text.
+
+Ingredient list:
+{raw_text}
+
+Respond with ONLY one word: meat_fish, animal_non_meat, plant, or unknown. No other text."""
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-6",
+                "max_tokens": 20,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return None
+        content = resp.json()["content"]
+        text_block = next(b["text"] for b in content if b["type"] == "text").strip().lower()
+        if text_block in ("meat_fish", "animal_non_meat", "plant"):
+            return text_block
+    except Exception:
+        pass
+    return None
+
+
+# ------------------------------------------------------------------
+# One-time backfill for ingredients registered before diet-category was
+# AI-suggested: reuses each ingredient's already-stored raw_text (no
+# re-photographing needed) to suggest plant / animal_non_meat / meat_fish
+# for any ingredient that doesn't already have a diet category set.
+# Ingredients that already have a diet category (manually chosen) are
+# left untouched, and ones with no stored raw_text (e.g. free items) are
+# skipped since there's nothing to classify from.
+# ------------------------------------------------------------------
+@bp.route("/api/ingredients/suggest-diet-categories", methods=["GET"])
+@login_required()
+def suggest_diet_categories(user):
+    if not ANTHROPIC_API_KEY:
+        return jsonify({"error": "ANTHROPIC_API_KEY is not configured on the server."}), 500
+
+    ids = list_ingredient_ids(user["company_id"])
+    ingredients = load_ingredients_many(ids)
+
+    commands = []
+    updated_count = 0
+    skipped_count = 0
+    for ing in ingredients:
+        if ing.get("diet_category"):
+            continue
+        raw_text = (ing.get("raw_text") or "").strip()
+        if not raw_text:
+            skipped_count += 1
+            continue
+        suggestion = _classify_diet_category_from_text(raw_text)
+        if suggestion:
+            ing["diet_category"] = suggestion
+            commands.append(["SET", f"allergy_ingredient:{ing['id']}", json.dumps(ing)])
+            updated_count += 1
+        else:
+            skipped_count += 1
+
+    if commands:
+        _raw_pipeline(commands)
+        log_action(user["company_id"], user, "updated", "ingredient", f"AI-suggested diet category on {updated_count} ingredients (backfill)")
+
+    return jsonify({"ok": True, "updatedCount": updated_count, "skippedCount": skipped_count,
+                     "note": "Diet categories suggested from existing ingredient text. Please review them in the ingredient list, then you can close this tab."})
