@@ -288,6 +288,7 @@ const T = {
     noMenuItemsYet: "No menu items registered yet.", enterMenuName: "Please enter a menu item name.",
     confirmDeleteMenu: "Delete this menu item?", updatedBy: "Updated by",
     costIncompleteLabel: "Food cost: incomplete.", missingCostFor: "Missing cost data for:",
+    addYieldOrQtyUnits: "Add a yield qty/unit, and price/unit/package size for each ingredient used, to compute cost.",
     addQtyUnits: "Add quantities/units to this menu's ingredients to compute cost.",
     foodCostLabel: "Food cost:", ofSellingPrice: "of selling price",
     invoiceReading: "Reading invoice...", noLineItems: "No line items could be read from this photo.",
@@ -411,6 +412,7 @@ const T = {
     noMenuItemsYet: "아직 등록된 메뉴가 없습니다.", enterMenuName: "메뉴 이름을 입력해주세요.",
     confirmDeleteMenu: "이 메뉴를 삭제할까요?", updatedBy: "수정자",
     costIncompleteLabel: "푸드코스트: 정보 부족.", missingCostFor: "다음 재료의 원가 정보 없음:",
+    addYieldOrQtyUnits: "수율(Yield) 수량/단위와, 사용된 각 재료의 가격/단위/포장수량을 입력하면 원가가 계산됩니다.",
     addQtyUnits: "이 메뉴의 재료에 수량/단위를 추가하면 원가가 계산됩니다.",
     foodCostLabel: "푸드코스트:", ofSellingPrice: "판매가 대비",
     invoiceReading: "인보이스 읽는 중...", noLineItems: "이 사진에서 항목을 읽어내지 못했습니다.",
@@ -1334,7 +1336,12 @@ function renderSubRecipesView(){
 }
 
 function subRecipeCostHtml(costing){
-  if(!costing || costing.costIncomplete) return `<span style="color:var(--ink-soft);font-family:inherit;">${t('incomplete')}</span>`;
+  if(!costing || costing.costIncomplete){
+    const missing = (costing && costing.missingCostItems || []).length
+      ? `${t('missingCostFor')} ${costing.missingCostItems.map(escapeHtml).join(', ')}.`
+      : t('addYieldOrQtyUnits');
+    return `<span style="color:var(--ink-soft);font-family:inherit;">${t('incomplete')}</span><div style="font-size:11px;color:var(--ink-soft);font-family:inherit;margin-top:2px;">${missing}</div>`;
+  }
   return `$${costing.totalCost.toFixed(2)} ${t('total')}<br><span style="color:var(--ink-soft);">$${costing.unitCost.toFixed(4)}/${costing.unitFamily==='weight'?'g':costing.unitFamily==='volume'?'ml':'each'}</span>`;
 }
 
