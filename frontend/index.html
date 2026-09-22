@@ -208,6 +208,7 @@ const T = {
     ingNamePh: "e.g. Soy Sauce, Curry (generic name)", detectedAllergens: "Detected allergens",
     mayContainLabel: "May contain (trace)", mayContainHint: "Precautionary / cross-contact statements from the label. Shown for staff reference only — not counted in the diet-safety flags above.",
     dietCategoryAiHint: "AI-suggested based on the ingredient list — please double-check before saving.",
+    noDietOnlyFilter: "Show only ingredients with no diet category set",
     dietCategoryLabel: "Diet category (for Vegetarian/Vegan)",
     aliasesLabel: "Search aliases (optional, comma-separated)", aliasesPh: "e.g. breadcrumbs, panko, crumb coating",
     aliasesHint: "Short/common names to also find this by when picking recipe ingredients — useful since supplier names are often long.",
@@ -330,6 +331,7 @@ const T = {
     ingNamePh: "예: 간장, 커리 (일반 이름으로)", detectedAllergens: "감지된 알러지원",
     mayContainLabel: "May contain (교차오염 가능)", mayContainHint: "라벨의 \"May contain / Trace of\" 문구예요. 참고용으로만 표시되고, 위 알러지 안전 판정(초록/빨강)에는 포함되지 않습니다.",
     dietCategoryAiHint: "원재료명을 기반으로 AI가 추천한 값이에요. 저장 전에 꼭 확인해주세요.",
+    noDietOnlyFilter: "식단분류가 아직 설정 안 된 재료만 보기",
     dietCategoryLabel: "식단 분류 (Vegetarian/Vegan용)",
     aliasesLabel: "검색 별칭 (선택, 콤마로 구분)", aliasesPh: "예: 빵가루, 판코, 튀김옷가루",
     aliasesHint: "레시피에 재료 넣을 때 이 이름으로도 찾을 수 있게 하는 짧은 별칭이에요 — 공급업체명이 보통 길어서 유용합니다.",
@@ -786,14 +788,15 @@ async function loadIngredients(){
   ingredientsCache = d.ingredients;
 }
 
-function renderIngredientTable(nameQuery, supplierQuery){
+function renderIngredientTable(nameQuery, supplierQuery, noDietOnly){
   const listEl = document.getElementById('ingredientList');
   if(!listEl) return;
   const nq = (nameQuery||'').trim().toLowerCase();
   const sq = (supplierQuery||'').trim().toLowerCase();
   const filtered = ingredientsCache.filter(ing =>
     (!nq || ingredientMatchesQuery(ing, nq)) &&
-    (!sq || (ing.supplier_name||'').toLowerCase().includes(sq))
+    (!sq || (ing.supplier_name||'').toLowerCase().includes(sq)) &&
+    (!noDietOnly || !ing.diet_category)
   );
   if(!ingredientsCache.length){ listEl.innerHTML = `<div class="empty">${t('noIngredientsYet')}</div>`; return; }
   if(!filtered.length){ listEl.innerHTML = `<div class="empty">${t('noMatchingIngredients')}</div>`; return; }
@@ -856,7 +859,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
         await api('/api/ingredients/bulk-delete', {method:'POST', body: JSON.stringify({ids:[...selectedForDelete]})});
         selectedForDelete.clear();
         await loadIngredients();
-        renderIngredientTable(nameQuery, supplierQuery);
+        renderIngredientTable(nameQuery, supplierQuery, noDietOnly);
       }catch(e){
         alert(e.message);
         bulkDeleteBtn.disabled = false;
@@ -868,7 +871,7 @@ function renderIngredientTable(nameQuery, supplierQuery){
   if(bulkClearBtn){
     bulkClearBtn.onclick = () => {
       selectedForDelete.clear();
-      renderIngredientTable(nameQuery, supplierQuery);
+      renderIngredientTable(nameQuery, supplierQuery, noDietOnly);
     };
   }
 
@@ -949,17 +952,21 @@ function renderIngredientsView(){
           <input id="ingSupplierSearch" placeholder="${t('searchBySupplier')}" style="flex:1;min-width:140px;">
         </div>
         <button class="ghost" id="applyGstAllBtn" style="font-size:11.5px;margin-top:8px;${ME.company.gstApplied ? 'color:var(--safe);border-color:var(--safe);' : ''}">${ME.company.gstApplied ? t('undoGstAllBtn') : t('applyGstAllBtn')}</button>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;color:var(--ink-soft);cursor:pointer;">
+          <input type="checkbox" id="noDietOnlyFilter" style="width:auto;"> ${t('noDietOnlyFilter')}
+        </label>
         <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : `<div class="empty">${t('noIngredientsYet')}</div>`}</div>
       </div>
     </div>
   `;
-  renderIngredientTable('', '');
+  renderIngredientTable('', '', false);
   const newListEl = document.getElementById('ingredientList');
   if(newListEl) newListEl.scrollTop = savedListScroll;
   document.getElementById('ingNameSearch').addEventListener('input', () => runIngredientSearch());
   document.getElementById('ingSupplierSearch').addEventListener('input', () => runIngredientSearch());
+  document.getElementById('noDietOnlyFilter').addEventListener('change', () => runIngredientSearch());
   function runIngredientSearch(){
-    renderIngredientTable(document.getElementById('ingNameSearch').value, document.getElementById('ingSupplierSearch').value);
+    renderIngredientTable(document.getElementById('ingNameSearch').value, document.getElementById('ingSupplierSearch').value, document.getElementById('noDietOnlyFilter').checked);
   }
 
   const applyGstAllBtn = document.getElementById('applyGstAllBtn');
