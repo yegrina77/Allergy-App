@@ -207,6 +207,7 @@ const T = {
     searchByName: "Search by ingredient name...", searchBySupplier: "Search by supplier name...",
     ingNamePh: "e.g. Soy Sauce, Curry (generic name)", detectedAllergens: "Detected allergens",
     mayContainLabel: "May contain (trace)", mayContainHint: "Precautionary / cross-contact statements from the label. Shown for staff reference only — not counted in the diet-safety flags above.",
+    dietCategoryAiHint: "AI-suggested based on the ingredient list — please double-check before saving.",
     dietCategoryLabel: "Diet category (for Vegetarian/Vegan)",
     aliasesLabel: "Search aliases (optional, comma-separated)", aliasesPh: "e.g. breadcrumbs, panko, crumb coating",
     aliasesHint: "Short/common names to also find this by when picking recipe ingredients — useful since supplier names are often long.",
@@ -328,6 +329,7 @@ const T = {
     searchByName: "재료명으로 검색...", searchBySupplier: "공급업체명으로 검색...",
     ingNamePh: "예: 간장, 커리 (일반 이름으로)", detectedAllergens: "감지된 알러지원",
     mayContainLabel: "May contain (교차오염 가능)", mayContainHint: "라벨의 \"May contain / Trace of\" 문구예요. 참고용으로만 표시되고, 위 알러지 안전 판정(초록/빨강)에는 포함되지 않습니다.",
+    dietCategoryAiHint: "원재료명을 기반으로 AI가 추천한 값이에요. 저장 전에 꼭 확인해주세요.",
     dietCategoryLabel: "식단 분류 (Vegetarian/Vegan용)",
     aliasesLabel: "검색 별칭 (선택, 콤마로 구분)", aliasesPh: "예: 빵가루, 판코, 튀김옷가루",
     aliasesHint: "레시피에 재료 넣을 때 이 이름으로도 찾을 수 있게 하는 짧은 별칭이에요 — 공급업체명이 보통 길어서 유용합니다.",
@@ -1051,8 +1053,13 @@ function renderIngredientsView(){
       ${analysis.notes ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">${escapeHtml(analysis.notes)}</div>` : ''}
       <label>${t('dietCategoryLabel')}</label>
       <select id="newIngDietCategory">
-        ${Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}" ${reverifyTarget && (reverifyTarget.diet_category||'')===v ? 'selected':''}>${l}</option>`).join('')}
+        ${(() => {
+          const existing = reverifyTarget ? (reverifyTarget.diet_category || '') : '';
+          const preselect = existing || analysis.suggested_diet_category || '';
+          return Object.entries(DIET_CATEGORY_LABELS).map(([v,l]) => `<option value="${v}" ${v===preselect ? 'selected':''}>${l}</option>`).join('');
+        })()}
       </select>
+      ${(!reverifyTarget || !reverifyTarget.diet_category) && analysis.suggested_diet_category ? `<p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0;">${t('dietCategoryAiHint')}</p>` : ''}
 
       <label>${t('aliasesLabel')}</label>
       <input id="newIngAliases" placeholder="${t('aliasesPh')}" value="${reverifyTarget && reverifyTarget.aliases ? escapeHtml(reverifyTarget.aliases.join(', ')) : ''}">
