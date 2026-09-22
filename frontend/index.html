@@ -289,6 +289,8 @@ const T = {
     confirmDeleteMenu: "Delete this menu item?", updatedBy: "Updated by",
     costIncompleteLabel: "Food cost: incomplete.", missingCostFor: "Missing cost data for:",
     addYieldOrQtyUnits: "Add a yield qty/unit, and price/unit/package size for each ingredient used, to compute cost.",
+    costBreakdownLabel: "Cost breakdown", noIngredientsInRecipe: "No ingredients added to this sub-recipe yet.",
+    ingredientRemoved: "(ingredient deleted)", noPriceYet: "no price yet", qtyUsedLabel: "Qty used",
     addQtyUnits: "Add quantities/units to this menu's ingredients to compute cost.",
     foodCostLabel: "Food cost:", ofSellingPrice: "of selling price",
     invoiceReading: "Reading invoice...", noLineItems: "No line items could be read from this photo.",
@@ -413,6 +415,8 @@ const T = {
     confirmDeleteMenu: "이 메뉴를 삭제할까요?", updatedBy: "수정자",
     costIncompleteLabel: "푸드코스트: 정보 부족.", missingCostFor: "다음 재료의 원가 정보 없음:",
     addYieldOrQtyUnits: "수율(Yield) 수량/단위와, 사용된 각 재료의 가격/단위/포장수량을 입력하면 원가가 계산됩니다.",
+    costBreakdownLabel: "원가 상세내역", noIngredientsInRecipe: "이 서브레시피에 아직 재료가 추가되지 않았습니다.",
+    ingredientRemoved: "(삭제된 재료)", noPriceYet: "가격 미입력", qtyUsedLabel: "사용량",
     addQtyUnits: "이 메뉴의 재료에 수량/단위를 추가하면 원가가 계산됩니다.",
     foodCostLabel: "푸드코스트:", ofSellingPrice: "판매가 대비",
     invoiceReading: "인보이스 읽는 중...", noLineItems: "이 사진에서 항목을 읽어내지 못했습니다.",
@@ -1332,24 +1336,33 @@ function renderSubRecipesView(){
 
   const listEl = document.getElementById('srList');
   if(subRecipesCache.length){
-    listEl.innerHTML = `<table><thead><tr><th>${t('colSubRecipe')}</th><th>${t('colAllergens')}</th><th>${t('colCost')}</th><th></th></tr></thead><tbody>
-      ${subRecipesCache.map(s => `
-        <tr>
-          <td><b>${escapeHtml(s.name)}</b></td>
-          <td>${allergenTagsHtml(s.allergens)}${mayContainTagsHtml(s.mayContain)}</td>
-          <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${subRecipeCostHtml(s.costing)}</td>
-          <td><button class="ghost" data-edit-sr="${s.id}" style="padding:5px 9px;font-size:11px;">${t('editInfo')}</button> <button class="danger" data-del-sr="${s.id}">${t('delete')}</button></td>
-        </tr>`).join('')}
-    </tbody></table>`;
+    listEl.innerHTML = subRecipesCache.map(s => `
+      <details class="menu-item-card">
+        <summary>
+          <span class="name">${escapeHtml(s.name)}</span>
+          <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);flex-shrink:0;">${costSummaryShort(s.costing)}</span>
+          <button class="ghost" data-edit-sr="${s.id}" style="margin-left:8px;flex-shrink:0;padding:5px 9px;font-size:11px;">${t('editInfo')}</button>
+          <button class="danger" data-del-sr="${s.id}" style="margin-left:8px;flex-shrink:0;">${t('delete')}</button>
+        </summary>
+        <div class="item-detail">
+          <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${t('colAllergens')}</div>
+          ${allergenTagsHtml(s.allergens)}${mayContainTagsHtml(s.mayContain)}
+          <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 6px;">${t('costBreakdownLabel')}</div>
+          ${subRecipeCostBreakdownHtml(s.costing)}
+          ${s.costing && s.costing.costIncomplete ? `<p style="font-size:11px;color:var(--warn);margin:6px 0 0;">${(s.costing.missingCostItems||[]).length ? `${t('missingCostFor')} ${s.costing.missingCostItems.map(escapeHtml).join(', ')}.` : t('addYieldOrQtyUnits')}</p>` : ''}
+        </div>
+      </details>`).join('');
     listEl.querySelectorAll('[data-edit-sr]').forEach(btn=>{
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        e.preventDefault(); e.stopPropagation();
         editingSrId = btn.dataset.editSr;
         renderSubRecipesView();
         window.scrollTo({top:0, behavior:'smooth'});
       };
     });
     listEl.querySelectorAll('[data-del-sr]').forEach(btn=>{
-      btn.onclick = async () => {
+      btn.onclick = async (e) => {
+        e.preventDefault(); e.stopPropagation();
         if(!confirm(t('confirmDeleteSubRecipe'))) return;
         if(editingSrId === btn.dataset.delSr) editingSrId = null;
         await api('/api/sub-recipes/'+btn.dataset.delSr, {method:'DELETE'});
@@ -1359,14 +1372,24 @@ function renderSubRecipesView(){
   }
 }
 
-function subRecipeCostHtml(costing){
-  if(!costing || costing.costIncomplete){
-    const missing = (costing && costing.missingCostItems || []).length
-      ? `${t('missingCostFor')} ${costing.missingCostItems.map(escapeHtml).join(', ')}.`
-      : t('addYieldOrQtyUnits');
-    return `<span style="color:var(--ink-soft);font-family:inherit;">${t('incomplete')}</span><div style="font-size:11px;color:var(--ink-soft);font-family:inherit;margin-top:2px;">${missing}</div>`;
-  }
-  return `$${costing.totalCost.toFixed(2)} ${t('total')}<br><span style="color:var(--ink-soft);">$${costing.unitCost.toFixed(4)}/${costing.unitFamily==='weight'?'g':costing.unitFamily==='volume'?'ml':'each'}</span>`;
+function costSummaryShort(costing){
+  if(!costing || costing.costIncomplete) return t('incomplete');
+  return `$${costing.totalCost.toFixed(2)}`;
+}
+
+function subRecipeCostBreakdownHtml(costing){
+  const lines = (costing && costing.lines) || [];
+  if(!lines.length) return `<p style="font-size:12.5px;color:var(--ink-soft);margin:0;">${t('noIngredientsInRecipe')}</p>`;
+  const rows = lines.map(l => {
+    const name = l.name ? escapeHtml(l.name) : `<span style="color:var(--warn);">${t('ingredientRemoved')}</span>`;
+    const qtyUnit = (l.qty!=null && l.unit) ? `${l.qty} ${escapeHtml(l.unit)}` : '—';
+    const cost = l.cost!=null ? `$${l.cost.toFixed(4)}` : `<span style="color:var(--warn);">${t('noPriceYet')}</span>`;
+    return `<tr><td>${name}</td><td style="color:var(--ink-soft);">${qtyUnit}</td><td style="text-align:right;font-family:'IBM Plex Mono',monospace;">${cost}</td></tr>`;
+  }).join('');
+  const totalRow = (costing && costing.totalCost!=null)
+    ? `<tr style="border-top:1px solid var(--border);"><td colspan="2"><b>${t('total')}</b></td><td style="text-align:right;font-family:'IBM Plex Mono',monospace;"><b>$${costing.totalCost.toFixed(2)}</b></td></tr>`
+    : '';
+  return `<table style="width:100%;font-size:12.5px;"><thead><tr><th style="text-align:left;">${t('colName')}</th><th style="text-align:left;">${t('qtyUsedLabel')}</th><th style="text-align:right;">${t('colCost')}</th></tr></thead><tbody>${rows}${totalRow}</tbody></table>`;
 }
 
 function menuCostSummaryHtml(costing){
