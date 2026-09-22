@@ -914,6 +914,12 @@ function renderIngredientsView(){
   const el = document.getElementById('view-ingredients');
   const prevListEl = document.getElementById('ingredientList');
   const savedListScroll = prevListEl ? prevListEl.scrollTop : 0;
+  const prevNameSearchEl = document.getElementById('ingNameSearch');
+  const prevSupplierSearchEl = document.getElementById('ingSupplierSearch');
+  const prevNoDietOnlyEl = document.getElementById('noDietOnlyFilter');
+  const savedNameQuery = prevNameSearchEl ? prevNameSearchEl.value : '';
+  const savedSupplierQuery = prevSupplierSearchEl ? prevSupplierSearchEl.value : '';
+  const savedNoDietOnly = prevNoDietOnlyEl ? prevNoDietOnlyEl.checked : false;
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
@@ -948,18 +954,18 @@ function renderIngredientsView(){
       <div class="col panel">
         <h2 style="font-size:17px;margin-bottom:12px;">${t('registeredIngredients')} (${ingredientsCache.length})</h2>
         <div class="row-flex" style="gap:8px;">
-          <input id="ingNameSearch" placeholder="${t('searchByName')}" style="flex:1;min-width:140px;">
-          <input id="ingSupplierSearch" placeholder="${t('searchBySupplier')}" style="flex:1;min-width:140px;">
+          <input id="ingNameSearch" placeholder="${t('searchByName')}" style="flex:1;min-width:140px;" value="${escapeHtml(savedNameQuery)}">
+          <input id="ingSupplierSearch" placeholder="${t('searchBySupplier')}" style="flex:1;min-width:140px;" value="${escapeHtml(savedSupplierQuery)}">
         </div>
         <button class="ghost" id="applyGstAllBtn" style="font-size:11.5px;margin-top:8px;${ME.company.gstApplied ? 'color:var(--safe);border-color:var(--safe);' : ''}">${ME.company.gstApplied ? t('undoGstAllBtn') : t('applyGstAllBtn')}</button>
         <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;color:var(--ink-soft);cursor:pointer;">
-          <input type="checkbox" id="noDietOnlyFilter" style="width:auto;"> ${t('noDietOnlyFilter')}
+          <input type="checkbox" id="noDietOnlyFilter" style="width:auto;" ${savedNoDietOnly ? 'checked' : ''}> ${t('noDietOnlyFilter')}
         </label>
         <div id="ingredientList" style="margin-top:10px;max-height:520px;overflow-y:auto;">${ingredientsCache.length ? '' : `<div class="empty">${t('noIngredientsYet')}</div>`}</div>
       </div>
     </div>
   `;
-  renderIngredientTable('', '', false);
+  renderIngredientTable(savedNameQuery, savedSupplierQuery, savedNoDietOnly);
   const newListEl = document.getElementById('ingredientList');
   if(newListEl) newListEl.scrollTop = savedListScroll;
   document.getElementById('ingNameSearch').addEventListener('input', () => runIngredientSearch());
