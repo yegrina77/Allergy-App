@@ -339,12 +339,16 @@ def compute_subrecipe_costing(sr, ingredient_by_id):
     total_cost = 0.0
     incomplete = False
     missing = []
+    lines = []
     for u in sr.get("ingredient_usages") or []:
         ing = ingredient_by_id.get(u.get("id"))
         if not ing:
             incomplete = True
+            lines.append({"id": u.get("id"), "name": None, "qty": u.get("qty"), "unit": u.get("unit"), "cost": None})
             continue
         cost = compute_usage_cost(ing, u.get("qty"), u.get("unit"))
+        lines.append({"id": ing["id"], "name": ing["name"], "qty": u.get("qty"), "unit": u.get("unit"),
+                       "cost": None if cost is None else round(cost, 4)})
         if cost is None:
             incomplete = True
             missing.append(ing["name"])
@@ -368,6 +372,7 @@ def compute_subrecipe_costing(sr, ingredient_by_id):
         "unitFamily": unit_family,
         "costIncomplete": incomplete or not (yield_qty and yield_unit),
         "missingCostItems": missing,
+        "lines": lines,
     }
 
 
