@@ -238,7 +238,7 @@ const T = {
     photo: "Photo", reverify: "Re-verify", editInfo: "Edit Info", delete: "Delete",
     editingInfo: "Editing info: ", editInfoHint: "Editing details without a photo — the last verified date and photo won't change.",
     colAliases: "Aliases",
-    createSubRecipe: "Create Sub-Recipe",
+    createSubRecipe: "Create Sub-Recipe", editSubRecipe: "Edit Sub-Recipe", saveChanges: "Save Changes",
     subRecipeHint: "A prep or sauce made from ingredients (e.g. \"Curry Sauce\"), not sold on its own — used inside one or more menu items.",
     subRecipeNameLabel: "Sub-recipe name", subRecipeNamePh: "e.g. Curry Sauce",
     ingredientsUsedQty: "Ingredients used (with quantity)",
@@ -247,7 +247,7 @@ const T = {
     saveSubRecipe: "Save Sub-Recipe", cancel: "Cancel",
     registeredSubRecipes: "Registered Sub-Recipes",
     colSubRecipe: "Sub-Recipe", colCost: "Cost",
-    createMenuItem: "Create New Menu Item", menuNameLabel: "Menu item name", menuNamePh: "e.g. Chicken Katsu Curry",
+    createMenuItem: "Create New Menu Item", editMenuItem: "Edit Menu Item", menuNameLabel: "Menu item name", menuNamePh: "e.g. Chicken Katsu Curry",
     sellingPriceLabel: "Selling price (optional, for food cost %)", sellingPricePh: "e.g. 18.00",
     subRecipesUsed: "Sub-recipes used (e.g. sauces, preps)", noSubRecipesYet: "No sub-recipes yet — optional.",
     ingredientsUsedDirect: "Ingredients used directly",
@@ -362,7 +362,7 @@ const T = {
     photo: "사진", reverify: "재확인", editInfo: "정보 수정", delete: "삭제",
     editingInfo: "정보 수정 중: ", editInfoHint: "사진 없이 정보만 수정합니다 — 최종 확인일과 사진은 변경되지 않아요.",
     colAliases: "별칭",
-    createSubRecipe: "서브레시피 만들기",
+    createSubRecipe: "서브레시피 만들기", editSubRecipe: "서브레시피 수정", saveChanges: "수정 저장",
     subRecipeHint: "재료로 만드는 소스/프렙(예: \"커리 소스\")으로, 그 자체로 파는 게 아니라 메뉴 안에서 쓰입니다.",
     subRecipeNameLabel: "서브레시피 이름", subRecipeNamePh: "예: 커리 소스",
     ingredientsUsedQty: "사용 재료 (수량 포함)",
@@ -371,7 +371,7 @@ const T = {
     saveSubRecipe: "서브레시피 저장", cancel: "취소",
     registeredSubRecipes: "등록된 서브레시피",
     colSubRecipe: "서브레시피", colCost: "원가",
-    createMenuItem: "새 메뉴 만들기", menuNameLabel: "메뉴 이름", menuNamePh: "예: 치킨카츠 커리",
+    createMenuItem: "새 메뉴 만들기", editMenuItem: "메뉴 수정", menuNameLabel: "메뉴 이름", menuNamePh: "예: 치킨카츠 커리",
     sellingPriceLabel: "판매가 (선택, 푸드코스트 %용)", sellingPricePh: "예: 18.00",
     subRecipesUsed: "사용한 서브레시피 (소스, 프렙 등)", noSubRecipesYet: "아직 서브레시피 없음 — 선택사항.",
     ingredientsUsedDirect: "직접 사용한 재료",
@@ -471,6 +471,8 @@ let editOnlyMode = false; // true when using "Edit Info" (no photo required) rat
 let selectedForDelete = new Set();
 let ingredientsCache = [];
 let subRecipesCache = [];
+let editingSrId = null;
+let editingMenuId = null;
 let menuCache = [];
 let suppliersCache = [];
 
@@ -1261,13 +1263,16 @@ async function loadSubRecipes(){
 
 function renderSubRecipesView(){
   const el = document.getElementById('view-subrecipes');
+  const editingSr = editingSrId ? subRecipesCache.find(s => s.id === editingSrId) : null;
+  if(editingSrId && !editingSr) editingSrId = null; // was deleted elsewhere
+
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:4px;">${t('createSubRecipe')}</h2>
+        <h2 style="font-size:17px;margin-bottom:4px;">${editingSr ? t('editSubRecipe') : t('createSubRecipe')}</h2>
         <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">${t('subRecipeHint')}</p>
         <label>${t('subRecipeNameLabel')}</label>
-        <input id="newSrName" placeholder="${t('subRecipeNamePh')}">
+        <input id="newSrName" placeholder="${t('subRecipeNamePh')}" value="${editingSr ? escapeHtml(editingSr.name) : ''}">
         <div style="font-size:12px;color:var(--ink-soft);margin:12px 0 4px;">${t('ingredientsUsedQty')}</div>
         <input id="srIngSearch" placeholder="${t('searchByName')}">
         <div class="chip-grid" id="srSupplierFilterRow" style="margin-top:8px;"></div>
@@ -1275,16 +1280,16 @@ function renderSubRecipesView(){
         <div class="row-flex" style="gap:8px;margin-top:10px;">
           <div style="flex:1;min-width:100px;">
             <label>${t('totalYieldLabel')}</label>
-            <input id="srYieldQty" type="number" step="any" placeholder="${t('yieldPh')}">
+            <input id="srYieldQty" type="number" step="any" placeholder="${t('yieldPh')}" value="${editingSr && editingSr.yield_qty!=null ? editingSr.yield_qty : ''}">
           </div>
           <div style="flex:1;min-width:80px;">
             <label>${t('unitLabel')}</label>
-            <select id="srYieldUnit">${UNIT_OPTIONS.map(u=>`<option value="${u}">${u}</option>`).join('')}</select>
+            <select id="srYieldUnit">${UNIT_OPTIONS.map(u=>`<option value="${u}" ${editingSr && editingSr.yield_unit===u ? 'selected':''}>${u}</option>`).join('')}</select>
           </div>
         </div>
         <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('yieldHint')}</p>
         <div class="row-flex" style="gap:8px;margin-top:14px;">
-          <button class="primary" style="flex:1;" id="saveSrBtn">${t('saveSubRecipe')}</button>
+          <button class="primary" style="flex:1;" id="saveSrBtn">${editingSr ? t('saveChanges') : t('saveSubRecipe')}</button>
           <button class="ghost" id="cancelSrBtn">${t('cancel')}</button>
         </div>
       </div>
@@ -1296,20 +1301,31 @@ function renderSubRecipesView(){
   `;
 
   const selectedIngMap = new Map();
+  if(editingSr){
+    (editingSr.ingredient_usages || []).forEach(u => {
+      if(u && u.id) selectedIngMap.set(u.id, {qty: u.qty!=null ? u.qty : '', unit: u.unit || 'g'});
+    });
+  }
   setupIngredientPicker({searchId:'srIngSearch', filterRowId:'srSupplierFilterRow', boxId:'srIngChips', selectedMap:selectedIngMap});
 
-  document.getElementById('cancelSrBtn').onclick = () => renderSubRecipesView();
+  document.getElementById('cancelSrBtn').onclick = () => { editingSrId = null; renderSubRecipesView(); };
 
   document.getElementById('saveSrBtn').onclick = async () => {
     const name = document.getElementById('newSrName').value.trim();
     if(!name){ alert(t('enterSubRecipeName')); return; }
     const ingredientUsages = [...selectedIngMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
     const yieldQtyVal = document.getElementById('srYieldQty').value;
-    await api('/api/sub-recipes', {method:'POST', body: JSON.stringify({
+    const body = JSON.stringify({
       name, ingredientUsages,
       yieldQty: yieldQtyVal ? parseFloat(yieldQtyVal) : null,
       yieldUnit: document.getElementById('srYieldUnit').value,
-    })});
+    });
+    if(editingSr){
+      await api('/api/sub-recipes/'+editingSr.id, {method:'PUT', body});
+    } else {
+      await api('/api/sub-recipes', {method:'POST', body});
+    }
+    editingSrId = null;
     await loadSubRecipes();
     renderSubRecipesView();
   };
@@ -1322,12 +1338,20 @@ function renderSubRecipesView(){
           <td><b>${escapeHtml(s.name)}</b></td>
           <td>${allergenTagsHtml(s.allergens)}${mayContainTagsHtml(s.mayContain)}</td>
           <td style="font-size:12.5px;font-family:'IBM Plex Mono',monospace;">${subRecipeCostHtml(s.costing)}</td>
-          <td><button class="danger" data-del-sr="${s.id}">${t('delete')}</button></td>
+          <td><button class="ghost" data-edit-sr="${s.id}" style="padding:5px 9px;font-size:11px;">${t('editInfo')}</button> <button class="danger" data-del-sr="${s.id}">${t('delete')}</button></td>
         </tr>`).join('')}
     </tbody></table>`;
+    listEl.querySelectorAll('[data-edit-sr]').forEach(btn=>{
+      btn.onclick = () => {
+        editingSrId = btn.dataset.editSr;
+        renderSubRecipesView();
+        window.scrollTo({top:0, behavior:'smooth'});
+      };
+    });
     listEl.querySelectorAll('[data-del-sr]').forEach(btn=>{
       btn.onclick = async () => {
         if(!confirm(t('confirmDeleteSubRecipe'))) return;
+        if(editingSrId === btn.dataset.delSr) editingSrId = null;
         await api('/api/sub-recipes/'+btn.dataset.delSr, {method:'DELETE'});
         await loadSubRecipes(); renderSubRecipesView();
       };
@@ -1373,14 +1397,17 @@ async function loadMenu(){
 
 function renderMenuView(){
   const el = document.getElementById('view-menu');
+  const editingMenu = editingMenuId ? menuCache.find(m => m.id === editingMenuId) : null;
+  if(editingMenuId && !editingMenu) editingMenuId = null; // was deleted elsewhere
+
   el.innerHTML = `
     <div class="row-flex">
       <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">${t('createMenuItem')}</h2>
+        <h2 style="font-size:17px;margin-bottom:12px;">${editingMenu ? t('editMenuItem') : t('createMenuItem')}</h2>
         <label>${t('menuNameLabel')}</label>
-        <input id="newMenuName" placeholder="${t('menuNamePh')}">
+        <input id="newMenuName" placeholder="${t('menuNamePh')}" value="${editingMenu ? escapeHtml(editingMenu.name) : ''}">
         <label>${t('sellingPriceLabel')}</label>
-        <input id="menuSellingPrice" type="number" step="0.01" placeholder="${t('sellingPricePh')}">
+        <input id="menuSellingPrice" type="number" step="0.01" placeholder="${t('sellingPricePh')}" value="${editingMenu && editingMenu.selling_price!=null ? editingMenu.selling_price : ''}">
 
         <div style="font-size:12px;color:var(--ink-soft);margin:14px 0 4px;">${t('subRecipesUsed')}</div>
         <div id="menuSrChips">${subRecipesCache.length ? '' : `<span class="empty">${t('noSubRecipesYet')}</span>`}</div>
@@ -1391,7 +1418,7 @@ function renderMenuView(){
         <div class="ing-picker-box" id="menuIngChips"></div>
 
         <div class="row-flex" style="gap:8px;margin-top:14px;">
-          <button class="primary" style="flex:1;" id="saveMenuBtn">${t('saveMenuItem')}</button>
+          <button class="primary" style="flex:1;" id="saveMenuBtn">${editingMenu ? t('saveChanges') : t('saveMenuItem')}</button>
           <button class="ghost" id="cancelMenuBtn">${t('cancel')}</button>
         </div>
       </div>
@@ -1404,6 +1431,14 @@ function renderMenuView(){
 
   const selectedIngMap = new Map();
   const selectedSrMap = new Map();
+  if(editingMenu){
+    (editingMenu.ingredient_usages || []).forEach(u => {
+      if(u && u.id) selectedIngMap.set(u.id, {qty: u.qty!=null ? u.qty : '', unit: u.unit || 'g'});
+    });
+    (editingMenu.subrecipe_usages || []).forEach(u => {
+      if(u && u.id) selectedSrMap.set(u.id, {qty: u.qty!=null ? u.qty : '', unit: u.unit || 'g'});
+    });
+  }
   setupIngredientPicker({searchId:'ingSearchInput', filterRowId:'supplierFilterRow', boxId:'menuIngChips', selectedMap:selectedIngMap});
 
   function renderSrPicker(){
@@ -1437,7 +1472,7 @@ function renderMenuView(){
   }
   renderSrPicker();
 
-  document.getElementById('cancelMenuBtn').onclick = () => renderMenuView();
+  document.getElementById('cancelMenuBtn').onclick = () => { editingMenuId = null; renderMenuView(); };
 
   document.getElementById('saveMenuBtn').onclick = async () => {
     const name = document.getElementById('newMenuName').value.trim();
@@ -1445,10 +1480,16 @@ function renderMenuView(){
     const sellingPriceVal = document.getElementById('menuSellingPrice').value;
     const ingredientUsages = [...selectedIngMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
     const subrecipeUsages = [...selectedSrMap.entries()].map(([id, v]) => ({id, qty: v.qty ? parseFloat(v.qty) : null, unit: v.unit}));
-    await api('/api/menu-items', {method:'POST', body: JSON.stringify({
+    const body = JSON.stringify({
       name, ingredientUsages, subrecipeUsages,
       sellingPrice: sellingPriceVal ? parseFloat(sellingPriceVal) : null,
-    })});
+    });
+    if(editingMenu){
+      await api('/api/menu-items/'+editingMenu.id, {method:'PUT', body});
+    } else {
+      await api('/api/menu-items', {method:'POST', body});
+    }
+    editingMenuId = null;
     await loadMenu();
     renderMenuView();
   };
@@ -1461,6 +1502,7 @@ function renderMenuView(){
           <span class="name">${escapeHtml(m.name)}</span>
           ${dotRowHtml(m.dietFlags, m.vegFlags)}
           <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);flex-shrink:0;">${menuCostSummaryHtml(m.costing)}</span>
+          <button class="ghost" data-edit-menu="${m.id}" style="margin-left:8px;flex-shrink:0;padding:5px 9px;font-size:11px;">${t('editInfo')}</button>
           <button class="danger" data-del-menu="${m.id}" style="margin-left:8px;flex-shrink:0;">${t('delete')}</button>
         </summary>
         <div class="item-detail">
@@ -1472,10 +1514,19 @@ function renderMenuView(){
           <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">${t('updatedBy')} ${escapeHtml(m.updated_by_name||'')} · ${formatDate(m.updated_at)}</div>
         </div>
       </details>`).join('');
+    listEl.querySelectorAll('[data-edit-menu]').forEach(btn=>{
+      btn.onclick = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        editingMenuId = btn.dataset.editMenu;
+        renderMenuView();
+        window.scrollTo({top:0, behavior:'smooth'});
+      };
+    });
     listEl.querySelectorAll('[data-del-menu]').forEach(btn=>{
       btn.onclick = async (e) => {
         e.preventDefault(); e.stopPropagation();
         if(!confirm(t('confirmDeleteMenu'))) return;
+        if(editingMenuId === btn.dataset.delMenu) editingMenuId = null;
         await api('/api/menu-items/'+btn.dataset.delMenu, {method:'DELETE'});
         await loadMenu(); renderMenuView();
       };
