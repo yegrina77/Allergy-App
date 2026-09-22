@@ -738,6 +738,13 @@ function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
     const box = document.getElementById(boxId);
     const q = currentSearch.trim().toLowerCase();
     const filtered = ingredientsCache.filter(ing => matches(ing) && (!q || ingredientMatchesQuery(ing, q)));
+    // already-selected ingredients float to the top, so removing a mistakenly
+    // added one doesn't require searching/scrolling to find it again
+    filtered.sort((a, b) => {
+      const aSel = selectedMap.has(a.id), bSel = selectedMap.has(b.id);
+      if(aSel !== bSel) return aSel ? -1 : 1;
+      return 0;
+    });
     if(!ingredientsCache.length){ box.innerHTML = `<span class="empty">${t('registerIngredientsFirst')}</span>`; return; }
     if(!filtered.length){ box.innerHTML = `<span class="empty">${t('noMatchingIngredients')}</span>`; return; }
     box.innerHTML = filtered.map(ing => {
@@ -1467,7 +1474,12 @@ function renderMenuView(){
   function renderSrPicker(){
     const srBox = document.getElementById('menuSrChips');
     if(!subRecipesCache.length) return;
-    srBox.innerHTML = subRecipesCache.map(s => {
+    const sortedSr = [...subRecipesCache].sort((a, b) => {
+      const aSel = selectedSrMap.has(a.id), bSel = selectedSrMap.has(b.id);
+      if(aSel !== bSel) return aSel ? -1 : 1;
+      return 0;
+    });
+    srBox.innerHTML = sortedSr.map(s => {
       const sel = selectedSrMap.has(s.id);
       const cur = selectedSrMap.get(s.id) || {qty:'', unit:'g'};
       return `<div style="margin:2px 0;">
