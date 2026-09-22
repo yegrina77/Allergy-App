@@ -414,14 +414,16 @@ Respond with ONLY one word: meat_fish, animal_non_meat, plant, or unknown. No ot
             timeout=30,
         )
         if resp.status_code != 200:
-            return None
+            return None, f"http_{resp.status_code}"
         content = resp.json()["content"]
         text_block = next(b["text"] for b in content if b["type"] == "text").strip().lower()
-        if text_block in ("meat_fish", "animal_non_meat", "plant"):
-            return text_block
-    except Exception:
-        pass
-    return None
+        # be lenient about trailing punctuation / extra words around the answer
+        for candidate in ("animal_non_meat", "meat_fish", "plant"):
+            if candidate in text_block:
+                return candidate, None
+        return None, f"unrecognized:{text_block[:60]}"
+    except Exception as e:
+        return None, f"error:{e}"
 
 
 # ------------------------------------------------------------------
@@ -444,25 +446,31 @@ def suggest_diet_categories(user):
 
     commands = []
     updated_count = 0
-    skipped_count = 0
+    skipped_no_text = 0
+    skipped_unclear = []
     for ing in ingredients:
         if ing.get("diet_category"):
             continue
         raw_text = (ing.get("raw_text") or "").strip()
         if not raw_text:
-            skipped_count += 1
+            skipped_no_text += 1
             continue
-        suggestion = _classify_diet_category_from_text(raw_text)
+        suggestion, reason = _classify_diet_category_from_text(raw_text)
         if suggestion:
             ing["diet_category"] = suggestion
             commands.append(["SET", f"allergy_ingredient:{ing['id']}", json.dumps(ing)])
             updated_count += 1
         else:
-            skipped_count += 1
+            skipped_unclear.append({"name": ing.get("name"), "reason": reason})
 
     if commands:
         _raw_pipeline(commands)
         log_action(user["company_id"], user, "updated", "ingredient", f"AI-suggested diet category on {updated_count} ingredients (backfill)")
 
-    return jsonify({"ok": True, "updatedCount": updated_count, "skippedCount": skipped_count,
-                     "note": "Diet categories suggested from existing ingredient text. Please review them in the ingredient list, then you can close this tab."})
+    return jsonify({
+        "ok": True, "updatedCount": updated_count,
+        "skippedNoText": skipped_no_text,
+        "skippedUnclearCount": len(skipped_unclear),
+        "skippedUnclearSample": skipped_unclear[:10],
+        "note": "Diet categories suggested from existing ingredient text. Please review them in the ingredient list, then you can close this tab.",
+    })
