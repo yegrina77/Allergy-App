@@ -175,6 +175,33 @@ const ALLERGENS = ["Wheat","Rye","Barley","Oats","Spelt","Triticale","Crustacea"
   "Peanuts","Sesame","Soybeans","Lupin","Almond","Brazil Nut","Cashew","Hazelnut","Macadamia","Pecan","Pine Nut","Pistachio","Walnut","Sulphites","Royal Jelly"];
 
 const UNIT_OPTIONS = ["g","kg","ml","l","each"];
+// mirrors backend UNIT_INFO (helpers.py) — family + multiplier to a base unit
+// (g for weight, ml for volume, each for count), used for unit conversion in the UI
+const UNIT_INFO = {
+  g: {family:'weight', mult:1}, kg: {family:'weight', mult:1000},
+  ml: {family:'volume', mult:1}, l: {family:'volume', mult:1000},
+  each: {family:'count', mult:1},
+};
+
+// Sums a selectedMap (ingredient id -> {qty, unit}) into base units (grams,
+// ml, each) by family. ml/weight are kept separate here; callers combine
+// them 1:1 (water-like density) when both are present, since density per
+// ingredient isn't tracked.
+function computeTheoreticalTotal(selectedMap){
+  let gramsTotal = 0, mlTotal = 0, eachTotal = 0;
+  let sawWeight = false, sawVolume = false, sawCount = false;
+  selectedMap.forEach((v) => {
+    const qty = parseFloat(v.qty);
+    if(!qty || !v.unit) return;
+    const info = UNIT_INFO[v.unit];
+    if(!info) return;
+    const base = qty * info.mult;
+    if(info.family === 'weight'){ gramsTotal += base; sawWeight = true; }
+    else if(info.family === 'volume'){ mlTotal += base; sawVolume = true; }
+    else if(info.family === 'count'){ eachTotal += base; sawCount = true; }
+  });
+  return {gramsTotal, mlTotal, eachTotal, sawWeight, sawVolume, sawCount};
+}
 const UNIT_FAMILY = {g:"weight", kg:"weight", ml:"volume", l:"volume", each:"count"};
 
 const DIET_CATEGORY_LABELS = {
@@ -244,6 +271,10 @@ const T = {
     ingredientsUsedQty: "Ingredients used (with quantity)",
     totalYieldLabel: "Total yield", yieldPh: "e.g. 1.5",
     yieldHint: "How much this recipe makes in total, e.g. \"1.5 kg\" of sauce — used to work out cost per gram.",
+    autoFillYieldBtn: "Estimate yield from ingredient total", autoFillYieldHint: "Adds up the quantities of ingredients used (treating ml as g, i.e. water-like density). This is a starting estimate, not a substitute for weighing the finished batch — cooking loss (evaporation etc.) isn't accounted for.",
+    noIngredientsSelectedYet: "Add ingredients with quantities/units first.", autoFillYieldDoneMsg: "Yield filled in as an estimate. Please review and adjust once you weigh the actual batch.",
+    theoreticalTotalLabel: "Theoretical total (from ingredients)", actualYieldLabel: "Actual yield (entered)",
+    yieldLossLabel: "Cooking loss", eachUnitLabel: "each",
     saveSubRecipe: "Save Sub-Recipe", cancel: "Cancel",
     registeredSubRecipes: "Registered Sub-Recipes",
     colSubRecipe: "Sub-Recipe", colCost: "Cost",
@@ -370,6 +401,10 @@ const T = {
     ingredientsUsedQty: "사용 재료 (수량 포함)",
     totalYieldLabel: "총 수율", yieldPh: "예: 1.5",
     yieldHint: "이 레시피가 총 얼마나 나오는지 (예: \"1.5 kg\") — g당 원가 계산에 쓰입니다.",
+    autoFillYieldBtn: "재료 합계로 수율 추정", autoFillYieldHint: "사용된 재료들의 양을 합산합니다 (ml은 물 밀도 기준으로 g과 1:1 취급). 어디까지나 시작점용 추정치이며, 끓이면서 생기는 손실(증발 등)은 반영되지 않으니 실제로 완성품을 재보시면 더 정확합니다.",
+    noIngredientsSelectedYet: "먼저 재료를 수량/단위와 함께 추가해주세요.", autoFillYieldDoneMsg: "추정치로 수율을 채웠습니다. 실제로 완성품을 재보신 후 필요하면 숫자를 고쳐주세요.",
+    theoreticalTotalLabel: "이론상 합계(재료 기준)", actualYieldLabel: "실제 수율(입력값)",
+    yieldLossLabel: "조리 손실률", eachUnitLabel: "개",
     saveSubRecipe: "서브레시피 저장", cancel: "취소",
     registeredSubRecipes: "등록된 서브레시피",
     colSubRecipe: "서브레시피", colCost: "원가",
@@ -711,7 +746,7 @@ function ingredientMatchesQuery(ing, q){
   return (ing.aliases||[]).some(a => a.toLowerCase().includes(q));
 }
 
-function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
+function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap, onChange}){
   let currentFilter = 'all';
   let currentSearch = '';
 
@@ -768,6 +803,7 @@ function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
           selectedMap.set(id, {qty:'', unit: (ing && ing.unit) || 'g'});
         }
         renderChips();
+        if(onChange) onChange();
       };
     });
     box.querySelectorAll('.usage-qty').forEach(inp => {
@@ -775,6 +811,7 @@ function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
         const cur = selectedMap.get(inp.dataset.ing) || {};
         cur.qty = inp.value;
         selectedMap.set(inp.dataset.ing, cur);
+        if(onChange) onChange();
       };
     });
     box.querySelectorAll('.usage-unit').forEach(sel => {
@@ -782,6 +819,7 @@ function setupIngredientPicker({searchId, filterRowId, boxId, selectedMap}){
         const cur = selectedMap.get(sel.dataset.ing) || {};
         cur.unit = sel.value;
         selectedMap.set(sel.dataset.ing, cur);
+        if(onChange) onChange();
       };
     });
   }
@@ -1299,6 +1337,9 @@ function renderSubRecipesView(){
           </div>
         </div>
         <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;">${t('yieldHint')}</p>
+        <button class="ghost" id="autoFillYieldBtn" style="font-size:11.5px;margin-top:8px;">${t('autoFillYieldBtn')}</button>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0;">${t('autoFillYieldHint')}</p>
+        <div id="yieldComparisonBox" style="margin-top:8px;"></div>
         <div class="row-flex" style="gap:8px;margin-top:14px;">
           <button class="primary" style="flex:1;" id="saveSrBtn">${editingSr ? t('saveChanges') : t('saveSubRecipe')}</button>
           <button class="ghost" id="cancelSrBtn">${t('cancel')}</button>
@@ -1317,7 +1358,65 @@ function renderSubRecipesView(){
       if(u && u.id) selectedIngMap.set(u.id, {qty: u.qty!=null ? u.qty : '', unit: u.unit || 'g'});
     });
   }
-  setupIngredientPicker({searchId:'srIngSearch', filterRowId:'srSupplierFilterRow', boxId:'srIngChips', selectedMap:selectedIngMap});
+
+  function updateYieldComparison(){
+    const box = document.getElementById('yieldComparisonBox');
+    if(!box) return;
+    const theo = computeTheoreticalTotal(selectedIngMap);
+    if(!theo.sawWeight && !theo.sawVolume && !theo.sawCount){ box.innerHTML = ''; return; }
+    const theoGrams = theo.gramsTotal + theo.mlTotal;
+    const actualQty = parseFloat(document.getElementById('srYieldQty').value);
+    const actualUnit = document.getElementById('srYieldUnit').value;
+    const actualInfo = UNIT_INFO[actualUnit];
+
+    let theoLine, actualLine = '', lossLine = '';
+    if(theo.sawWeight || theo.sawVolume){
+      theoLine = `${t('theoreticalTotalLabel')}: ${theoGrams.toFixed(1)} g`;
+      if(actualQty && actualInfo && actualInfo.family !== 'count'){
+        const actualGrams = actualQty * actualInfo.mult;
+        actualLine = `<br>${t('actualYieldLabel')}: ${actualGrams.toFixed(1)} g`;
+        if(theoGrams > 0){
+          const lossPct = ((theoGrams - actualGrams) / theoGrams) * 100;
+          const lossColor = lossPct > 0 ? 'var(--warn)' : 'var(--safe)';
+          lossLine = `<br><span style="color:${lossColor};">${t('yieldLossLabel')}: ${lossPct.toFixed(1)}%</span>`;
+        }
+      }
+    } else {
+      theoLine = `${t('theoreticalTotalLabel')}: ${theo.eachTotal} ${t('eachUnitLabel')}`;
+      if(actualQty && actualInfo && actualInfo.family === 'count'){
+        actualLine = `<br>${t('actualYieldLabel')}: ${actualQty} ${t('eachUnitLabel')}`;
+      }
+    }
+    box.innerHTML = `<p style="font-size:11.5px;color:var(--ink-soft);margin:0;background:rgba(243,238,228,0.03);border:1px solid var(--border);border-radius:7px;padding:8px 10px;">${theoLine}${actualLine}${lossLine}</p>`;
+  }
+
+  setupIngredientPicker({searchId:'srIngSearch', filterRowId:'srSupplierFilterRow', boxId:'srIngChips', selectedMap:selectedIngMap, onChange: updateYieldComparison});
+
+  document.getElementById('autoFillYieldBtn').onclick = () => {
+    if(!selectedIngMap.size){ alert(t('noIngredientsSelectedYet')); return; }
+    const theo = computeTheoreticalTotal(selectedIngMap);
+    // Weight and volume are combined 1:1 (treating ml as g, i.e. water-like
+    // density) when a recipe mixes both, since we don't track each
+    // ingredient's density — this is an estimate to start from, not a
+    // substitute for weighing the finished batch.
+    if(theo.sawWeight || theo.sawVolume){
+      const combinedGrams = theo.gramsTotal + theo.mlTotal;
+      document.getElementById('srYieldQty').value = Math.round(combinedGrams * 100) / 100;
+      document.getElementById('srYieldUnit').value = 'g';
+    } else if(theo.sawCount){
+      document.getElementById('srYieldQty').value = Math.round(theo.eachTotal * 100) / 100;
+      document.getElementById('srYieldUnit').value = 'each';
+    } else {
+      alert(t('noIngredientsSelectedYet'));
+      return;
+    }
+    alert(t('autoFillYieldDoneMsg'));
+    updateYieldComparison();
+  };
+
+  document.getElementById('srYieldQty').addEventListener('input', updateYieldComparison);
+  document.getElementById('srYieldUnit').addEventListener('change', updateYieldComparison);
+  updateYieldComparison();
 
   document.getElementById('cancelSrBtn').onclick = () => { editingSrId = null; renderSubRecipesView(); };
 
