@@ -157,9 +157,7 @@
     <button class="tab" data-view="reports">Reports</button>
     <button class="tab" data-view="staffLink">Staff View</button>
     <button class="tab" data-view="admins" id="tabAdmins" style="display:none;">Admin Accounts</button>
-    <button class="tab" data-view="audit" id="tabAudit" style="display:none;">Change Log</button>
-    <button class="tab" data-view="account" id="tabAccount">My Account</button>
-  </div>
+    <button class="tab" data-view="audit" id="tabAudit" style="display:none;">Change Log</button>  </div>
 
   <div id="view-ingredients"></div>
   <div id="view-subrecipes" style="display:none;"></div>
@@ -168,9 +166,7 @@
   <div id="view-reports" style="display:none;"></div>
   <div id="view-staffLink" style="display:none;"></div>
   <div id="view-admins" style="display:none;"></div>
-  <div id="view-audit" style="display:none;"></div>
-  <div id="view-account" style="display:none;"></div>
-</div>
+  <div id="view-audit" style="display:none;"></div></div>
 
 <script>
 const ALLERGENS = ["Wheat","Rye","Barley","Oats","Spelt","Triticale","Crustacea","Molluscs","Fish","Egg","Milk",
@@ -227,15 +223,7 @@ const T = {
     appTitle: "Allergy Manager", logout: "Log out",
     tabIngredients: "Ingredients", tabSubrecipes: "Sub-Recipes", tabMenu: "Menu",
     tabInvoices: "Invoices", tabReports: "Reports", tabStaffView: "Staff View",
-    tabAdmins: "Admin Accounts", tabAudit: "Change Log", tabAccount: "My Account",
-    accountEmailTitle: "Change email (login ID)", accountPasswordTitle: "Change password",
-    currentEmailLabel: "Current email", newEmailLabel: "New email",
-    currentPasswordLabel: "Current password", newPasswordLabel: "New password (min 8 characters)",
-    confirmPasswordLabel: "Confirm new password",
-    changeEmailBtn: "Change email", changePasswordBtn: "Change password",
-    emailChanged: "Email changed. Use the new email next time you log in.",
-    passwordChanged: "Password changed. Use the new password next time you log in.",
-    passwordMismatch: "New passwords do not match.",
+    tabAdmins: "Admin Accounts", tabAudit: "Change Log",
     roleOwner: "Owner", roleAdmin: "Admin",
     registerPhoto: "Register Ingredient Photo",
     dropzone: "Drag & drop a photo, or click to select",
@@ -365,15 +353,7 @@ const T = {
     appTitle: "알러지 매니저", logout: "로그아웃",
     tabIngredients: "재료", tabSubrecipes: "서브레시피", tabMenu: "메뉴",
     tabInvoices: "인보이스", tabReports: "리포트", tabStaffView: "직원용 화면",
-    tabAdmins: "관리자 계정", tabAudit: "수정 이력", tabAccount: "내 계정",
-    accountEmailTitle: "이메일(아이디) 변경", accountPasswordTitle: "비밀번호 변경",
-    currentEmailLabel: "현재 이메일", newEmailLabel: "새 이메일",
-    currentPasswordLabel: "현재 비밀번호", newPasswordLabel: "새 비밀번호 (8자 이상)",
-    confirmPasswordLabel: "새 비밀번호 확인",
-    changeEmailBtn: "이메일 변경", changePasswordBtn: "비밀번호 변경",
-    emailChanged: "이메일이 변경되었습니다. 다음 로그인부터 새 이메일을 사용하세요.",
-    passwordChanged: "비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용하세요.",
-    passwordMismatch: "새 비밀번호가 서로 일치하지 않습니다.",
+    tabAdmins: "관리자 계정", tabAudit: "수정 이력",
     roleOwner: "오너", roleAdmin: "관리자",
     registerPhoto: "재료 사진 등록",
     dropzone: "사진을 끌어놓거나 클릭해서 선택",
@@ -504,7 +484,7 @@ function applyAppLang(){
   if(ME) document.getElementById('whoRole').textContent = ME.user.role === 'owner' ? t('roleOwner') : t('roleAdmin');
   document.querySelectorAll('#mainTabs .tab').forEach(tab => {
     const key = {ingredients:'tabIngredients', subrecipes:'tabSubrecipes', menu:'tabMenu', invoices:'tabInvoices',
-      reports:'tabReports', staffLink:'tabStaffView', admins:'tabAdmins', audit:'tabAudit', account:'tabAccount'}[tab.dataset.view];
+      reports:'tabReports', staffLink:'tabStaffView', admins:'tabAdmins', audit:'tabAudit'}[tab.dataset.view];
     if(key) tab.textContent = t(key);
   });
 }
@@ -521,7 +501,6 @@ function renderCurrentTab(){
   if(v === 'staffLink') renderStaffLinkView();
   if(v === 'admins') loadAdmins();
   if(v === 'audit') loadAudit();
-  if(v === 'account') renderAccountView();
 }
 
 let reverifyTarget = null;
@@ -641,7 +620,7 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
-    ['ingredients','subrecipes','menu','invoices','reports','staffLink','admins','audit','account'].forEach(v => {
+    ['ingredients','subrecipes','menu','invoices','reports','staffLink','admins','audit'].forEach(v => {
       document.getElementById('view-'+v).style.display = (v===tab.dataset.view) ? 'block' : 'none';
     });
     const v = tab.dataset.view;
@@ -653,7 +632,6 @@ document.querySelectorAll('#mainTabs .tab').forEach(tab => {
     if(v === 'staffLink') renderStaffLinkView();
     if(v === 'admins') loadAdmins();
     if(v === 'audit') loadAudit();
-    if(v === 'account') renderAccountView();
   });
 });
 
@@ -2019,64 +1997,6 @@ async function loadAdmins(){
       loadAdmins();
     };
   });
-}
-
-// ---------- My Account (change own email / password) ----------
-function renderAccountView(){
-  const el = document.getElementById('view-account');
-  el.innerHTML = `
-    <div class="row-flex">
-      <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">${t('accountEmailTitle')}</h2>
-        <label>${t('currentEmailLabel')}</label><input id="acctCurEmail" value="${escapeHtml(ME.user.email)}" disabled>
-        <label>${t('newEmailLabel')}</label><input id="acctNewEmail" type="email" autocomplete="off">
-        <label>${t('currentPasswordLabel')}</label><input id="acctEmailPw" type="password" autocomplete="current-password">
-        <button class="primary" style="width:100%;margin-top:14px;" id="acctEmailBtn">${t('changeEmailBtn')}</button>
-        <div class="error-box" id="acctEmailMsg"></div>
-      </div>
-      <div class="col panel">
-        <h2 style="font-size:17px;margin-bottom:12px;">${t('accountPasswordTitle')}</h2>
-        <label>${t('currentPasswordLabel')}</label><input id="acctCurPw" type="password" autocomplete="current-password">
-        <label>${t('newPasswordLabel')}</label><input id="acctNewPw" type="password" autocomplete="new-password">
-        <label>${t('confirmPasswordLabel')}</label><input id="acctNewPw2" type="password" autocomplete="new-password">
-        <button class="primary" style="width:100%;margin-top:14px;" id="acctPwBtn">${t('changePasswordBtn')}</button>
-        <div class="error-box" id="acctPwMsg"></div>
-      </div>
-    </div>
-  `;
-  function showMsg(id, text, ok){
-    const m = document.getElementById(id);
-    m.textContent = text;
-    m.style.display = 'block';
-    m.style.background = ok ? 'var(--ok-bg, #e6f4ea)' : '';
-    m.style.color = ok ? 'var(--ok, #1e7e34)' : '';
-  }
-  document.getElementById('acctEmailBtn').onclick = async () => {
-    try{
-      const r = await api('/api/account/email', {method:'POST', body: JSON.stringify({
-        newEmail: document.getElementById('acctNewEmail').value.trim(),
-        currentPassword: document.getElementById('acctEmailPw').value,
-      })});
-      ME.user.email = r.email;
-      renderAccountView();
-      showMsg('acctEmailMsg', t('emailChanged'), true);
-    }catch(e){ showMsg('acctEmailMsg', e.message, false); }
-  };
-  document.getElementById('acctPwBtn').onclick = async () => {
-    const np = document.getElementById('acctNewPw').value;
-    if(np !== document.getElementById('acctNewPw2').value){
-      showMsg('acctPwMsg', t('passwordMismatch'), false);
-      return;
-    }
-    try{
-      await api('/api/account/password', {method:'POST', body: JSON.stringify({
-        currentPassword: document.getElementById('acctCurPw').value,
-        newPassword: np,
-      })});
-      renderAccountView();
-      showMsg('acctPwMsg', t('passwordChanged'), true);
-    }catch(e){ showMsg('acctPwMsg', e.message, false); }
-  };
 }
 
 // ---------- Audit log (owner only) ----------
