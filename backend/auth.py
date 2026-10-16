@@ -98,6 +98,56 @@ def me():
 
 
 # ------------------------------------------------------------------
+# My account: change own email (login ID) / password.
+# Both require the current password, so a left-open browser can't be
+# used to take over the account.
+# ------------------------------------------------------------------
+@bp.route("/api/account/email", methods=["POST"])
+@login_required()
+def change_email(user):
+    data = request.get_json(force=True)
+    current_password = data.get("currentPassword") or ""
+    new_email = (data.get("newEmail") or "").strip().lower()
+
+    if not new_email or "@" not in new_email:
+        return jsonify({"error": "Please enter a valid email."}), 400
+
+    auth = load_auth()
+    target = auth["users"].get(user["id"])
+    if not target or not check_password_hash(target["password_hash"], current_password):
+        return jsonify({"error": "Current password is incorrect."}), 400
+    if any(u["email"] == new_email and u["id"] != target["id"] for u in auth["users"].values()):
+        return jsonify({"error": "This email is already in use."}), 400
+
+    old_email = target["email"]
+    target["email"] = new_email
+    save_auth(auth)
+    log_action(user["company_id"], user, "updated", "admin_account", f"{old_email} -> {new_email}")
+    return jsonify({"ok": True, "email": new_email})
+
+
+@bp.route("/api/account/password", methods=["POST"])
+@login_required()
+def change_password(user):
+    data = request.get_json(force=True)
+    current_password = data.get("currentPassword") or ""
+    new_password = data.get("newPassword") or ""
+
+    if len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters."}), 400
+
+    auth = load_auth()
+    target = auth["users"].get(user["id"])
+    if not target or not check_password_hash(target["password_hash"], current_password):
+        return jsonify({"error": "Current password is incorrect."}), 400
+
+    target["password_hash"] = generate_password_hash(new_password)
+    save_auth(auth)
+    log_action(user["company_id"], user, "updated", "admin_account", f"{target['email']} (password changed)")
+    return jsonify({"ok": True})
+
+
+# ------------------------------------------------------------------
 # Owner: manage admin accounts
 # ------------------------------------------------------------------
 @bp.route("/api/admins", methods=["GET"])
